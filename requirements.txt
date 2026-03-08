@@ -1,0 +1,39 @@
+# Core inference
+torch>=2.2.0
+transformers>=4.40.0
+accelerate>=0.27.0
+huggingface_hub>=0.22.0
+
+# Datasets
+datasets>=2.18.0
+
+# NLP / parsing
+spacy>=3.7.0
+
+# Embeddings (for cycle detection feature)
+sentence-transformers>=2.6.0
+
+# Semantic entropy baseline
+# (DeBERTa NLI — loaded via transformers, no extra package needed)
+
+# ML / evaluation
+scikit-learn>=1.4.0
+xgboost>=2.0.0
+shap>=0.45.0
+
+# Numerics / analysis
+numpy>=1.26.0
+pandas>=2.2.0
+scipy>=1.12.0
+
+# Visualization
+matplotlib>=3.8.0
+seaborn>=0.13.0
+
+# Notebooks
+jupyter>=1.0.0
+ipykernel>=6.29.0
+
+# Utilities
+tqdm>=4.66.0
+python-dotenv>=1.0.0
