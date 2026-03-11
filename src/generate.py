@@ -276,11 +276,13 @@ def generate_hf_api(prompts: list[str], temperature: float, max_tokens: int) -> 
 
 
 def generate_deepseek_api(prompts: list[str], temperature: float, max_tokens: int) -> list[str]:
-    """DeepSeek API (OpenAI-compatible). Needs DEEPSEEK_API_KEY env var."""
+    """DeepSeek API (OpenAI-compatible). Prompts for API key interactively."""
+    import getpass
     from openai import OpenAI
 
+    api_key = os.environ.get("DEEPSEEK_API_KEY") or getpass.getpass("Enter DeepSeek API key: ")
     client = OpenAI(
-        api_key=os.environ["DEEPSEEK_API_KEY"],
+        api_key=api_key,
         base_url="https://api.deepseek.com",
     )
 
