@@ -53,7 +53,6 @@ Our work is the first to:
 |---------|--------|------|------------|---------------|
 | MATH500 | Math (diverse) | 500 | Mixed | Exact match |
 | GSM8K | Grade-school math | 1,319 | Easy | Exact match |
-| AIME 2024 | Competition math | 30 | Hard | Exact match |
 | GPQA Diamond | Graduate science | 198 | Hard | Multiple choice |
 | ARC-Challenge | Science reasoning | 1,172 | Medium | Multiple choice |
 
