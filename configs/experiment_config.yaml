@@ -1,0 +1,140 @@
+# =============================================================================
+# Experiment Configuration
+# =============================================================================
+# Defines feature groups, classifier hyperparameters, evaluation metrics,
+# and cross-validation settings for all experiments.
+
+# --- Feature Groups ---
+features:
+  group1_length:
+    name: "Length & Proportion"
+    features:
+      - total_tokens
+      - total_episodes
+      - prop_forward
+      - prop_verification
+      - prop_backtrack
+      - prop_restart
+      - prop_hesitation
+      - prop_subgoal
+      - prop_conclusion
+
+  group2_structural:
+    name: "Structural / Topological"
+    features:
+      - backtrack_count
+      - verification_count
+      - restart_count
+      - vf_ratio                    # Verification-to-Forward ratio
+      - bt_position_mean            # Mean normalized position of backtracks
+      - first_conclusion_pos        # Normalized position of first conclusion
+      - v_clustering                # Verification clustering coefficient
+      - max_forward_run             # Longest consecutive forward streak
+      - transition_entropy          # Shannon entropy of behavior bigrams
+      - cycle_count                 # Semantic-level revisitation count
+
+  group3_meta:
+    name: "Content-Free Meta"
+    features:
+      - wait_ratio                  # Wait-family tokens / total tokens
+      - question_mark_count
+      - negation_count
+      - repetition_rate_4gram       # Fraction of repeated 4-grams
+
+# --- Classifiers ---
+classifiers:
+  logistic_regression:
+    class: "sklearn.linear_model.LogisticRegression"
+    params:
+      C: 1.0
+      penalty: "l2"
+      solver: "lbfgs"
+      max_iter: 1000
+      class_weight: "balanced"
+    interpretable: true        # Use for coefficient analysis
+
+  random_forest:
+    class: "sklearn.ensemble.RandomForestClassifier"
+    params:
+      n_estimators: 100
+      max_depth: null
+      min_samples_leaf: 5
+      class_weight: "balanced"
+      random_state: 42
+    interpretable: true        # Use for SHAP analysis
+
+  xgboost:
+    class: "xgboost.XGBClassifier"
+    params:
+      n_estimators: 100
+      max_depth: 6
+      learning_rate: 0.1
+      scale_pos_weight: null   # Will be computed from data
+      random_state: 42
+      eval_metric: "logloss"
+    interpretable: false
+
+# --- Evaluation ---
+evaluation:
+  cross_validation:
+    n_splits: 5
+    stratified: true
+    shuffle: true
+    random_state: 42
+
+  metrics:
+    primary:
+      - auroc                  # Area Under ROC Curve
+      - auprc                  # Area Under Precision-Recall Curve
+    secondary:
+      - ece                    # Expected Calibration Error (10 bins)
+      - accuracy               # At default threshold 0.5
+      - f1                     # F1 score
+    selective_generation:
+      - accuracy_at_80         # Accuracy when answering 80% of questions
+      - accuracy_at_90         # Accuracy when answering 90% of questions
+      - auprc_coverage         # Area under accuracy-coverage curve
+
+  # ECE settings
+  ece:
+    n_bins: 10
+    strategy: "uniform"        # uniform or quantile binning
+
+# --- Transfer Experiments ---
+transfer:
+  cross_domain:
+    - train: "math500"
+      test: "gpqa_diamond"
+      name: "math_to_science"
+    - train: "math500"
+      test: "arc_challenge"
+      name: "math_to_easy_science"
+
+  cross_difficulty:
+    - train: "gsm8k"
+      test: "math500"
+      name: "easy_to_hard_math"
+
+  # Feature normalization for transfer
+  normalization: "standard"    # z-score using training set statistics
+
+# --- Ablation Study ---
+ablation:
+  # Test each feature group independently + all combined
+  variants:
+    - name: "length_only"
+      groups: ["group1_length"]
+    - name: "structural_only"
+      groups: ["group2_structural"]
+    - name: "meta_only"
+      groups: ["group3_meta"]
+    - name: "all_features"
+      groups: ["group1_length", "group2_structural", "group3_meta"]
+    - name: "structural_plus_meta"
+      groups: ["group2_structural", "group3_meta"]
+
+# --- Random Seeds ---
+seeds:
+  data_split: 42
+  model_training: 42
+  numpy: 42

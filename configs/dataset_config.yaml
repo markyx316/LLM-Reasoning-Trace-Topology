@@ -1,0 +1,120 @@
+# =============================================================================
+# Dataset Configuration
+# =============================================================================
+# Defines all evaluation datasets, their sources, scoring methods, and
+# which experiments each dataset participates in.
+
+datasets:
+  # --- Primary evaluation datasets ---
+  math500:
+    display_name: "MATH500"
+    domain: "mathematics"
+    difficulty: "mixed"        # Levels 1-5
+    source:
+      type: "huggingface"
+      path: "HuggingFaceH4/MATH-500"
+      split: "test"
+    answer_type: "exact_match_math"  # LaTeX-aware equivalence
+    problem_field: "problem"
+    answer_field: "answer"
+    metadata_fields: ["level", "type"]  # Difficulty level and math subject
+    expected_size: 500
+    experiments: ["within_dataset", "cross_domain_source", "selective_generation"]
+    self_consistency: true     # Generate SC samples for this dataset
+
+  gsm8k:
+    display_name: "GSM8K"
+    domain: "grade_school_math"
+    difficulty: "easy"
+    source:
+      type: "huggingface"
+      path: "openai/gsm8k"
+      name: "main"
+      split: "test"
+    answer_type: "exact_match_numeric"  # Extract number after ####
+    problem_field: "question"
+    answer_field: "answer"     # Format: "explanation\n#### <number>"
+    answer_extraction: "gsm8k"  # Special extraction: parse #### marker
+    metadata_fields: []
+    expected_size: 1319
+    experiments: ["within_dataset", "difficulty_transfer_source"]
+    self_consistency: false    # Skip to save compute (use MATH500 instead)
+
+  gpqa_diamond:
+    display_name: "GPQA Diamond"
+    domain: "graduate_science"
+    difficulty: "hard"
+    source:
+      type: "huggingface"
+      path: "Idavidrein/gpqa"
+      name: "gpqa_diamond"
+      split: "train"           # GPQA uses 'train' as the main split
+    answer_type: "multiple_choice"
+    problem_field: "Question"
+    answer_field: "Answer"     # Contains full text of correct answer
+    choice_fields: ["choice1", "choice2", "choice3", "choice4"]  # If present
+    correct_answer_field: "Answer"
+    metadata_fields: ["Subdomain"]
+    expected_size: 198
+    experiments: ["within_dataset", "cross_domain_target", "selective_generation"]
+    self_consistency: true     # Generate SC samples for this dataset
+
+  arc_challenge:
+    display_name: "ARC-Challenge"
+    domain: "science_reasoning"
+    difficulty: "medium"
+    source:
+      type: "huggingface"
+      path: "allenai/ai2_arc"
+      name: "ARC-Challenge"
+      split: "test"
+    answer_type: "multiple_choice"
+    problem_field: "question"
+    answer_field: "answerKey"  # Letter: A, B, C, D, or number: 1, 2, 3, 4
+    choices_field: "choices"   # Dict with 'text' and 'label' lists
+    metadata_fields: []
+    expected_size: 1172
+    experiments: ["within_dataset", "cross_domain_target"]
+    self_consistency: false
+
+# --- Scoring Configuration ---
+scoring:
+  # Math equivalence checker settings
+  math_equivalence:
+    use_sympy: true            # Symbolic math comparison
+    numerical_tolerance: 1e-6  # For float comparisons
+    normalize_latex: true      # Strip $, \text{}, etc.
+    normalize_fractions: true  # Convert 1/2 to 0.5 for comparison
+
+  # Multiple choice settings
+  multiple_choice:
+    normalize_case: true       # 'a' == 'A'
+    accept_full_text: true     # Accept both letter and full answer text
+    extract_patterns:          # Patterns to extract MC answer from model output
+      - '(?:answer|choice)\s*(?:is|:)\s*\(?([A-Da-d])\)?'
+      - '\b([A-D])\)'
+      - '\boxed\{([A-Da-d])\}'
+      - '(?:^|\n)\s*([A-Da-d])\s*$'
+
+# --- Prompt Templates ---
+prompts:
+  # Standard prompt for math/reasoning problems
+  standard: |
+    {problem}
+
+  # Multiple choice prompt format
+  multiple_choice: |
+    {problem}
+
+    Choices:
+    {choices}
+
+    Please reason step by step and provide your final answer.
+
+  # Verbalized confidence prompt (for baseline)
+  verbalized_confidence: |
+    {problem}
+
+    Solve this problem step by step. After providing your solution and final answer, rate your confidence in your answer on a scale from 0 to 100, where 0 means completely uncertain and 100 means completely certain.
+
+    Format your confidence as: "Confidence: [number]"

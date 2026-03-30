@@ -1,39 +1,56 @@
-# Core inference
-torch>=2.2.0
-transformers>=4.40.0
-accelerate>=0.27.0
-huggingface_hub>=0.22.0
+# =============================================================================
+# Reasoning Trace Topology UQ - Requirements
+# =============================================================================
+# Install: pip install -r requirements.txt
+# For GPU inference, install PyTorch separately with CUDA support first:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
 
-# Datasets
-datasets>=2.18.0
+# --- Core ML & NLP ---
+transformers>=4.45.0
+accelerate>=0.34.0
+datasets>=3.0.0
+tokenizers>=0.20.0
+sentencepiece>=0.2.0
+safetensors>=0.4.0
 
-# NLP / parsing
+# --- Quantization (optional, for 4-bit inference) ---
+bitsandbytes>=0.44.0
+
+# --- Fast inference (optional, recommended) ---
+# vllm>=0.6.0  # Install separately: pip install vllm
+
+# --- Sentence embeddings ---
+sentence-transformers>=3.0.0
+
+# --- NLP processing ---
 spacy>=3.7.0
+# After install: python -m spacy download en_core_web_sm
+nltk>=3.9.0
+regex>=2024.0.0
 
-# Embeddings (for cycle detection feature)
-sentence-transformers>=2.6.0
-
-# Semantic entropy baseline
-# (DeBERTa NLI — loaded via transformers, no extra package needed)
-
-# ML / evaluation
-scikit-learn>=1.4.0
-xgboost>=2.0.0
+# --- Classical ML ---
+scikit-learn>=1.5.0
+xgboost>=2.1.0
 shap>=0.45.0
 
-# Numerics / analysis
+# --- Data & computation ---
 numpy>=1.26.0
 pandas>=2.2.0
-scipy>=1.12.0
+scipy>=1.13.0
 
-# Visualization
-matplotlib>=3.8.0
+# --- Visualization ---
+matplotlib>=3.9.0
 seaborn>=0.13.0
 
-# Notebooks
-jupyter>=1.0.0
-ipykernel>=6.29.0
+# --- NLI model for semantic entropy baseline ---
+# (uses transformers pipeline, no extra install)
 
-# Utilities
+# --- Experiment tracking ---
+pyyaml>=6.0.0
 tqdm>=4.66.0
-python-dotenv>=1.0.0
+
+# --- Symbolic math (for answer equivalence checking) ---
+sympy>=1.13.0
+
+# --- Reproducibility ---
+# Record: pip freeze > requirements_frozen.txt
