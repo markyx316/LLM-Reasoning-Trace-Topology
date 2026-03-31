@@ -72,10 +72,30 @@ def _load_dotenv():
 
 
 def extract_think_block(full_text: str) -> tuple[str, str]:
-    """Extract <think>...</think> trace and answer. Returns (trace, answer)."""
+    """
+    Extract reasoning trace and final answer from model output.
+
+    Handles THREE formats:
+      1. <think>TRACE</think>ANSWER  — API output (both tags present)
+      2. TRACE</think>ANSWER         — HF output (opening <think> stripped
+                                       by skip_special_tokens=True)
+      3. ANSWER                       — No think tags at all
+
+    Returns: (reasoning_trace, answer_text)
+    """
+    # Case 1: Both tags present (API / deepseek-reasoner)
     m = re.search(r'<think>(.*?)</think>', full_text, re.DOTALL)
     if m:
         return m.group(1).strip(), full_text[m.end():].strip()
+
+    # Case 2: Only closing tag (HF distilled models — tokenizer strips <think>)
+    close_idx = full_text.find('</think>')
+    if close_idx >= 0:
+        trace = full_text[:close_idx].strip()
+        answer = full_text[close_idx + len('</think>'):].strip()
+        return trace, answer
+
+    # Case 3: No tags at all
     return "", full_text.strip()
 
 

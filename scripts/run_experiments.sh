@@ -31,13 +31,23 @@ echo ""
 
 run_parse() {
     echo ">>> STEP 1: Parse traces and extract features"
-    for TRACE_FILE in "$TRACES_DIR"/*_traces.jsonl; do
+    for TRACE_FILE in "$TRACES_DIR"/*.jsonl; do
         [ -f "$TRACE_FILE" ] || continue
-        BASENAME=$(basename "$TRACE_FILE" _traces.jsonl)
+        FILENAME=$(basename "$TRACE_FILE")
+
+        # Skip pilot, temp, and self-consistency files
+        case "$FILENAME" in
+            pilot_*|_*|*_sc.jsonl|*_sc_*.jsonl) continue ;;
+        esac
+
+        # Derive clean base name
+        BASENAME="${FILENAME%.jsonl}"
+        BASENAME="${BASENAME%_traces}"
+
         echo "  Parsing: $BASENAME"
 
         # Parse behavior sequences
-        python -c "
+        python3 -c "
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 from src.parsing.behavior_classifier import parse_trace_file
@@ -46,7 +56,7 @@ parse_trace_file('$TRACE_FILE', '$PARSED_DIR/${BASENAME}_parsed.jsonl')
 
         # Extract features
         echo "  Extracting features: $BASENAME"
-        python -c "
+        python3 -c "
 import logging
 logging.basicConfig(level=logging.INFO)
 from src.features.feature_pipeline import extract_features_from_file
@@ -64,7 +74,7 @@ run_train() {
         echo ""
         echo "  === Dataset: $BASENAME ==="
 
-        python src/modeling/train_and_evaluate.py \
+        python3 src/modeling/train_and_evaluate.py \
             --features "$FEATURES_FILE" \
             --output "$RESULTS_DIR/${BASENAME}_results.json"
     done
@@ -74,34 +84,81 @@ run_train() {
 run_transfer() {
     echo ">>> STEP 3: Cross-domain transfer experiments"
 
-    # MATH500 → GPQA Diamond
-    if [ -f "$FEATURES_DIR/math500_features.csv" ] && [ -f "$FEATURES_DIR/gpqa_diamond_features.csv" ]; then
-        echo "  Transfer: math500 → gpqa_diamond"
-        python src/modeling/train_and_evaluate.py \
-            --features "$FEATURES_DIR/math500_features.csv" \
-            --test-features "$FEATURES_DIR/gpqa_diamond_features.csv" \
-            --output "$RESULTS_DIR/transfer_math500_to_gpqa.json"
+    # Auto-discover feature files and run transfers between datasets
+    # We look for any math500 file as source and any gpqa/arc file as target
+
+    # Find all feature files grouped by dataset prefix
+    MATH_FILES=$(ls "$FEATURES_DIR"/math500*_features.csv 2>/dev/null || true)
+    GPQA_FILES=$(ls "$FEATURES_DIR"/gpqa_diamond*_features.csv 2>/dev/null || true)
+    ARC_FILES=$(ls "$FEATURES_DIR"/arc_challenge*_features.csv 2>/dev/null || true)
+    GSM_FILES=$(ls "$FEATURES_DIR"/gsm8k*_features.csv 2>/dev/null || true)
+
+    FOUND=0
+
+    # MATH500 → GPQA (for each model that has both)
+    for MATH_F in $MATH_FILES; do
+        [ -f "$MATH_F" ] || continue
+        MATH_BASE=$(basename "$MATH_F" _features.csv)
+        # Extract model suffix (e.g., "qwen7b", "llama8b", "deepseek_r1")
+        MODEL_SUFFIX="${MATH_BASE#math500_}"
+
+        for GPQA_F in $GPQA_FILES; do
+            [ -f "$GPQA_F" ] || continue
+            GPQA_BASE=$(basename "$GPQA_F" _features.csv)
+            GPQA_SUFFIX="${GPQA_BASE#gpqa_diamond_}"
+            # Match same model
+            if [ "$MODEL_SUFFIX" = "$GPQA_SUFFIX" ]; then
+                echo "  Transfer: $MATH_BASE → $GPQA_BASE"
+                FOUND=$((FOUND + 1))
+                python3 src/modeling/train_and_evaluate.py \
+                    --features "$MATH_F" \
+                    --test-features "$GPQA_F" \
+                    --output "$RESULTS_DIR/transfer_${MATH_BASE}_to_gpqa_${MODEL_SUFFIX}.json"
+            fi
+        done
+
+        for ARC_F in $ARC_FILES; do
+            [ -f "$ARC_F" ] || continue
+            ARC_BASE=$(basename "$ARC_F" _features.csv)
+            ARC_SUFFIX="${ARC_BASE#arc_challenge_}"
+            if [ "$MODEL_SUFFIX" = "$ARC_SUFFIX" ]; then
+                echo "  Transfer: $MATH_BASE → $ARC_BASE"
+                FOUND=$((FOUND + 1))
+                python3 src/modeling/train_and_evaluate.py \
+                    --features "$MATH_F" \
+                    --test-features "$ARC_F" \
+                    --output "$RESULTS_DIR/transfer_${MATH_BASE}_to_arc_${MODEL_SUFFIX}.json"
+            fi
+        done
+    done
+
+    # GSM8K → MATH500 (difficulty transfer, same model)
+    for GSM_F in $GSM_FILES; do
+        [ -f "$GSM_F" ] || continue
+        GSM_BASE=$(basename "$GSM_F" _features.csv)
+        MODEL_SUFFIX="${GSM_BASE#gsm8k_}"
+
+        for MATH_F in $MATH_FILES; do
+            [ -f "$MATH_F" ] || continue
+            MATH_BASE=$(basename "$MATH_F" _features.csv)
+            MATH_SUFFIX="${MATH_BASE#math500_}"
+            if [ "$MODEL_SUFFIX" = "$MATH_SUFFIX" ]; then
+                echo "  Transfer: $GSM_BASE → $MATH_BASE (difficulty)"
+                FOUND=$((FOUND + 1))
+                python3 src/modeling/train_and_evaluate.py \
+                    --features "$GSM_F" \
+                    --test-features "$MATH_F" \
+                    --output "$RESULTS_DIR/transfer_${GSM_BASE}_to_math500_${MODEL_SUFFIX}.json"
+            fi
+        done
+    done
+
+    if [ "$FOUND" -eq 0 ]; then
+        echo "  No matching feature file pairs found for transfer experiments."
+        echo "  Need feature files for multiple datasets with the same model suffix."
     fi
 
-    # MATH500 → ARC-Challenge
-    if [ -f "$FEATURES_DIR/math500_features.csv" ] && [ -f "$FEATURES_DIR/arc_challenge_features.csv" ]; then
-        echo "  Transfer: math500 → arc_challenge"
-        python src/modeling/train_and_evaluate.py \
-            --features "$FEATURES_DIR/math500_features.csv" \
-            --test-features "$FEATURES_DIR/arc_challenge_features.csv" \
-            --output "$RESULTS_DIR/transfer_math500_to_arc.json"
-    fi
-
-    # GSM8K → MATH500 (difficulty transfer)
-    if [ -f "$FEATURES_DIR/gsm8k_features.csv" ] && [ -f "$FEATURES_DIR/math500_features.csv" ]; then
-        echo "  Transfer: gsm8k → math500 (difficulty transfer)"
-        python src/modeling/train_and_evaluate.py \
-            --features "$FEATURES_DIR/gsm8k_features.csv" \
-            --test-features "$FEATURES_DIR/math500_features.csv" \
-            --output "$RESULTS_DIR/transfer_gsm8k_to_math500.json"
-    fi
-
-    echo ">>> Transfer experiments complete."
+    echo ">>> Transfer experiments complete ($FOUND experiments run)."
 }
 
 case "${1:-help}" in

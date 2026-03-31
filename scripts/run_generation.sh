@@ -31,7 +31,7 @@ echo "================================================"
 case "${1:-help}" in
     pilot)
         echo ">>> Pilot study: 50 items from MATH500 via DeepSeek API"
-        python src/generation/generate_traces.py \
+        python3 src/generation/generate_traces.py \
             --dataset math500 \
             --output "$TRACES_DIR/pilot_math500_r1.jsonl" \
             --backend api --model deepseek-r1 \
@@ -40,7 +40,7 @@ case "${1:-help}" in
 
     pilot-hpc)
         echo ">>> Pilot study: 50 items from MATH500 via local HF (Qwen-7B)"
-        python src/generation/generate_traces.py \
+        python3 src/generation/generate_traces.py \
             --dataset math500 \
             --output "$TRACES_DIR/pilot_math500_qwen7b.jsonl" \
             --backend hf --model r1-distill-qwen-7b \
@@ -51,7 +51,7 @@ case "${1:-help}" in
         echo ">>> Full generation via DeepSeek API (all datasets)"
         for DS in math500 gsm8k gpqa_diamond arc_challenge; do
             echo ""; echo "--- $DS ---"
-            python src/generation/generate_traces.py \
+            python3 src/generation/generate_traces.py \
                 --dataset "$DS" \
                 --output "$TRACES_DIR/${DS}_deepseek_r1.jsonl" \
                 --backend api --model deepseek-r1 \
@@ -70,7 +70,7 @@ case "${1:-help}" in
         echo ">>> Full generation via HPC ($MODEL_KEY) - all datasets"
         for DS in math500 gsm8k gpqa_diamond arc_challenge; do
             echo ""; echo "--- $DS ($MODEL_KEY) ---"
-            python src/generation/generate_traces.py \
+            python3 src/generation/generate_traces.py \
                 --dataset "$DS" \
                 --output "$TRACES_DIR/${DS}_${MODEL_KEY}.jsonl" \
                 --backend hf --model "$MODEL" \
@@ -84,7 +84,7 @@ case "${1:-help}" in
         for MK in qwen7b llama8b; do
             declare -A MODELS=([qwen7b]="r1-distill-qwen-7b" [llama8b]="r1-distill-llama-8b")
             echo ""; echo "--- $MK ---"
-            python src/generation/generate_traces.py \
+            python3 src/generation/generate_traces.py \
                 --dataset "$DS" \
                 --output "$TRACES_DIR/${DS}_${MK}.jsonl" \
                 --backend hf --model "${MODELS[$MK]}" \
@@ -98,7 +98,7 @@ case "${1:-help}" in
         MODEL="${4:-deepseek-r1}"
         MK=$(echo "$MODEL" | sed 's/r1-distill-//;s/deepseek-//')
         echo ">>> Self-consistency: $DS (${BACKEND}, N=8)"
-        python src/generation/generate_traces.py \
+        python3 src/generation/generate_traces.py \
             --dataset "$DS" \
             --output "$TRACES_DIR/${DS}_${MK}_sc.jsonl" \
             --backend "$BACKEND" --model "$MODEL" \

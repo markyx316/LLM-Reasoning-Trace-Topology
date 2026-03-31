@@ -29,45 +29,80 @@ echo "================================================"
 case "${1:-help}" in
     parse)
         echo ">>> Parsing all generated traces..."
-        for TRACE_FILE in "$TRACES_DIR"/*_traces.jsonl; do
-            if [ -f "$TRACE_FILE" ]; then
-                BASENAME=$(basename "$TRACE_FILE" _traces.jsonl)
-                echo "  Parsing: $BASENAME"
-                python -c "
-import logging, sys
+        FOUND=0
+        for TRACE_FILE in "$TRACES_DIR"/*.jsonl; do
+            [ -f "$TRACE_FILE" ] || continue
+
+            FILENAME=$(basename "$TRACE_FILE")
+
+            # Skip pilot files and temp files
+            case "$FILENAME" in
+                pilot_*|_*|*_sc.jsonl|*_sc_*.jsonl) continue ;;
+            esac
+
+            # Derive a clean base name by stripping known suffixes
+            BASENAME="${FILENAME%.jsonl}"
+            BASENAME="${BASENAME%_traces}"  # strip _traces if present
+
+            # Skip if already parsed
+            if [ -f "$PARSED_DIR/${BASENAME}_parsed.jsonl" ]; then
+                echo "  Skipping (already parsed): $BASENAME"
+                continue
+            fi
+
+            echo "  Parsing: $BASENAME"
+            FOUND=$((FOUND + 1))
+            python3 -c "
+import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 from src.parsing.behavior_classifier import parse_trace_file
 parse_trace_file('$TRACE_FILE', '$PARSED_DIR/${BASENAME}_parsed.jsonl')
 "
-            fi
         done
+        if [ "$FOUND" -eq 0 ]; then
+            echo "  No new trace files to parse."
+            echo "  (To re-parse, delete files in $PARSED_DIR/)"
+        fi
         echo ">>> Parsing complete."
         ;;
 
     features)
         echo ">>> Extracting features from parsed traces..."
         for PARSED_FILE in "$PARSED_DIR"/*_parsed.jsonl; do
-            if [ -f "$PARSED_FILE" ]; then
-                BASENAME=$(basename "$PARSED_FILE" _parsed.jsonl)
-                echo "  Features: $BASENAME"
-                python -c "
+            [ -f "$PARSED_FILE" ] || continue
+            BASENAME=$(basename "$PARSED_FILE" _parsed.jsonl)
+
+            # Skip if already extracted
+            if [ -f "$FEATURES_DIR/${BASENAME}_features.csv" ]; then
+                echo "  Skipping (already extracted): $BASENAME"
+                continue
+            fi
+
+            echo "  Features: $BASENAME"
+            python3 -c "
 import logging
 logging.basicConfig(level=logging.INFO)
 from src.features.feature_pipeline import extract_features_from_file
 extract_features_from_file('$PARSED_FILE', '$FEATURES_DIR/${BASENAME}_features.csv')
 "
-            fi
         done
         echo ">>> Feature extraction complete."
         ;;
 
     annotate)
         echo ">>> Creating annotation template..."
-        # Combine all trace files and sample
+        # Combine all trace files (excluding pilot and SC files)
         COMBINED="$TRACES_DIR/_combined_for_annotation.jsonl"
-        cat "$TRACES_DIR"/*_traces.jsonl > "$COMBINED" 2>/dev/null || true
+        rm -f "$COMBINED"
+        for f in "$TRACES_DIR"/*.jsonl; do
+            [ -f "$f" ] || continue
+            case "$(basename "$f")" in
+                pilot_*|_*|*_sc.jsonl|*_sc_*.jsonl) continue ;;
+            esac
+            cat "$f" >> "$COMBINED"
+        done
         if [ -s "$COMBINED" ]; then
-            PYTHONPATH="$PROJECT_DIR" python src/parsing/parser_evaluation.py \
+            python3 src/parsing/parser_evaluation.py \
                 create \
                 --traces "$COMBINED" \
                 --output "$ANNOTATIONS_DIR/annotation_template.csv" \
@@ -79,13 +114,14 @@ extract_features_from_file('$PARSED_FILE', '$FEATURES_DIR/${BASENAME}_features.c
             echo "    ./scripts/run_parsing.sh evaluate"
         else
             echo "ERROR: No trace files found in $TRACES_DIR"
+            rm -f "$COMBINED"
             exit 1
         fi
         ;;
 
     evaluate)
         echo ">>> Evaluating parser accuracy..."
-        PYTHONPATH="$PROJECT_DIR" python src/parsing/parser_evaluation.py \
+        PYTHONPATH="$PROJECT_DIR" python3 src/parsing/parser_evaluation.py \
             evaluate \
             --annotations "$ANNOTATIONS_DIR/annotation_template.csv" \
             --report "$ANNOTATIONS_DIR/parser_evaluation_report.json"
