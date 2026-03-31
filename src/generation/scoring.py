@@ -30,6 +30,46 @@ logger = logging.getLogger(__name__)
 # 1. MATHEMATICAL ANSWER EQUIVALENCE
 # =============================================================================
 
+def extract_boxed_content(s: str) -> Optional[str]:
+    """
+    Extract content from the LAST \\boxed{...} in a string,
+    correctly handling nested braces.
+
+    \\boxed{\\frac{\\pi}{2}}   →  \\frac{\\pi}{2}
+    \\boxed{(3, \\frac{1}{2})} →  (3, \\frac{1}{2})
+    \\boxed{x^{2}}            →  x^{2}
+    No \\boxed present         →  None
+
+    Algorithm: find '\\boxed{', then walk forward counting brace depth
+    until the matching closing brace is found.
+    """
+    # Find the LAST occurrence of \boxed{ (models sometimes have multiple)
+    search_str = "\\boxed{"
+    idx = s.rfind(search_str)
+    if idx == -1:
+        return None
+
+    # Start after the opening brace of \boxed{
+    content_start = idx + len(search_str)
+    depth = 1
+    i = content_start
+
+    while i < len(s) and depth > 0:
+        if s[i] == '{':
+            depth += 1
+        elif s[i] == '}':
+            depth -= 1
+        i += 1
+
+    if depth != 0:
+        # Unbalanced braces — fall back to greedy regex
+        m = re.search(r'\\boxed\{(.+)\}', s, re.DOTALL)
+        return m.group(1).strip() if m else None
+
+    # content is between content_start and i-1 (the matching })
+    return s[content_start:i - 1].strip()
+
+
 def normalize_math_string(s: str) -> str:
     """
     Normalize a mathematical answer string for comparison.
@@ -39,10 +79,11 @@ def normalize_math_string(s: str) -> str:
     simplification — that's handled separately by sympy_equiv().
 
     Examples:
-        "\\boxed{42}"         -> "42"
-        "$ \\frac{1}{2} $"    -> "\\frac{1}{2}"
-        "\\text{cm}"          -> "cm"
-        "  3.14  "            -> "3.14"
+        "\\boxed{42}"                        -> "42"
+        "\\boxed{(3, \\frac{\\pi}{2})}"      -> "(3, \\frac{\\pi}{2})"
+        "$ \\frac{1}{2} $"                   -> "\\frac{1}{2}"
+        "\\left( 3, \\frac{\\pi}{2} \\right)" -> "(3, \\frac{\\pi}{2})"
+        "\\text{cm}"                          -> "cm"
     """
     if not isinstance(s, str):
         s = str(s)
@@ -50,42 +91,74 @@ def normalize_math_string(s: str) -> str:
     # Strip leading/trailing whitespace
     s = s.strip()
 
-    # Remove \\boxed{...} wrapper (potentially nested braces)
-    boxed_match = re.search(r'\\boxed\{(.+)\}', s, re.DOTALL)
-    if boxed_match:
-        s = boxed_match.group(1).strip()
+    # Remove \\boxed{...} wrapper (with proper brace matching)
+    boxed_content = extract_boxed_content(s)
+    if boxed_content is not None:
+        s = boxed_content
 
     # Remove dollar signs (inline math delimiters)
     s = s.replace('$', '').strip()
 
-    # Remove \text{...} wrappers but keep content
-    s = re.sub(r'\\text\{([^}]*)\}', r'\1', s)
-    # Remove \textbf, \textit, \mathrm, etc.
-    s = re.sub(r'\\(?:textbf|textit|mathrm|mathbf|mathit|operatorname)\{([^}]*)\}', r'\1', s)
+    # Remove \text{...}, \textbf{...}, \mathrm{...} etc wrappers
+    # Use a function to handle nested braces inside these commands
+    latex_wrapper_cmds = [
+        'text', 'textbf', 'textit', 'mathrm', 'mathbf',
+        'mathit', 'operatorname', 'textrm',
+    ]
+    for cmd in latex_wrapper_cmds:
+        pattern = '\\' + cmd + '{'
+        while pattern in s:
+            idx = s.find(pattern)
+            inner = _extract_brace_content(s, idx + len(pattern) - 1)
+            if inner is not None:
+                s = s[:idx] + inner + s[idx + len(pattern) + len(inner) + 1:]
+            else:
+                break  # Avoid infinite loop on parse failure
 
     # Remove \left and \right modifiers
     s = s.replace('\\left', '').replace('\\right', '')
 
-    # Normalize whitespace
+    # Normalize whitespace inside parentheses/brackets:
+    # "( 3, x )" → "(3, x)"   and   "[ 1, 2 ]" → "[1, 2]"
+    s = re.sub(r'\(\s+', '(', s)
+    s = re.sub(r'\s+\)', ')', s)
+    s = re.sub(r'\[\s+', '[', s)
+    s = re.sub(r'\s+\]', ']', s)
+
+    # Normalize whitespace (collapse multiple spaces to one)
     s = re.sub(r'\s+', ' ', s).strip()
 
     # Remove trailing period (sometimes models end with "42.")
     if s.endswith('.') and not s.endswith('...'):
-        # But don't strip if it's a decimal like "3.14" ending at the period
-        # Check: is the character before the period a digit with no following digits?
         if len(s) >= 2 and s[-2].isdigit():
-            # Could be "42." -> "42" or "3.14." -> "3.14"
-            # Only strip if there's no digit after a decimal point pattern
             if not re.search(r'\d+\.\d+\.$', s):
                 s = s[:-1].strip()
         else:
             s = s[:-1].strip()
 
-    # Normalize common LaTeX fractions to a parseable form
-    # \frac{a}{b} -> (a)/(b) for numerical evaluation
-    # But keep the original for string comparison too
-
     return s
+
+
+def _extract_brace_content(s: str, open_brace_pos: int) -> Optional[str]:
+    """
+    Given a string and the position of an opening '{', return the content
+    up to the matching closing '}', handling nesting.
+
+    Returns None if braces are unbalanced.
+    """
+    if open_brace_pos >= len(s) or s[open_brace_pos] != '{':
+        return None
+    depth = 1
+    i = open_brace_pos + 1
+    while i < len(s) and depth > 0:
+        if s[i] == '{':
+            depth += 1
+        elif s[i] == '}':
+            depth -= 1
+        i += 1
+    if depth != 0:
+        return None
+    return s[open_brace_pos + 1:i - 1]
 
 
 def extract_numeric_value(s: str) -> Optional[float]:
@@ -254,11 +327,11 @@ def extract_gsm8k_answer(answer_string: str) -> str:
 
 def extract_model_numeric_answer(text: str) -> Optional[str]:
     """
-    Extract a numeric answer from model-generated text.
+    Extract a mathematical answer from model-generated text.
 
     Looks for patterns like:
+      - "\\boxed{(3, \\frac{\\pi}{2})}"  (with nested braces)
       - "the answer is 42"
-      - "\\boxed{42}"
       - "#### 42"
       - Final number on its own line
 
@@ -270,21 +343,26 @@ def extract_model_numeric_answer(text: str) -> Optional[str]:
     """
     text = text.strip()
 
-    # Priority 1: Look for \boxed{...}
-    boxed = re.findall(r'\\boxed\{([^}]+)\}', text)
-    if boxed:
-        return boxed[-1].strip()  # Take the last \boxed if multiple
+    # Priority 1: Look for \boxed{...} with proper brace matching
+    boxed = extract_boxed_content(text)
+    if boxed is not None:
+        return boxed.strip()
 
     # Priority 2: Look for "the answer is ..."
     answer_patterns = [
-        r'(?:the\s+)?(?:final\s+)?answer\s+is\s*:?\s*(.+?)(?:\.|$)',
-        r'(?:therefore|thus|so|hence),?\s*(?:the\s+)?answer\s+is\s*:?\s*(.+?)(?:\.|$)',
+        r'(?:the\s+)?(?:final\s+)?answer\s+is\s*:?\s*(.+?)(?:\.\s*$|$)',
+        r'(?:therefore|thus|so|hence),?\s*(?:the\s+)?answer\s+is\s*:?\s*(.+?)(?:\.\s*$|$)',
         r'####\s*(.+?)$',
     ]
     for pattern in answer_patterns:
         match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
         if match:
-            return match.group(1).strip()
+            candidate = match.group(1).strip()
+            # If the candidate itself contains \boxed, extract from it
+            inner_boxed = extract_boxed_content(candidate)
+            if inner_boxed is not None:
+                return inner_boxed.strip()
+            return candidate
 
     # Priority 3: Take the last number/expression in the text
     # This is aggressive but necessary as a fallback
@@ -470,42 +548,117 @@ def run_scoring_tests():
             tests_passed += 1
         else:
             tests_failed += 1
-            print(f"  FAIL: {test_name}: expected {expected}, got {actual}")
+            print(f"  FAIL: {test_name}: expected {expected!r}, got {actual!r}")
 
-    # --- Math Normalization Tests ---
-    check("boxed_simple", "42", normalize_math_string("\\boxed{42}"))
-    check("dollar_signs", "x+1", normalize_math_string("$x+1$"))
-    check("text_wrapper", "cm", normalize_math_string("\\text{cm}"))
-    check("whitespace", "3 + 4", normalize_math_string("  3  +  4  "))
-    check("trailing_period", "42", normalize_math_string("42."))
-    check("decimal_no_strip", "3.14", normalize_math_string("3.14"))
+    # ================================================================
+    # BRACE MATCHING (extract_boxed_content)
+    # ================================================================
+    check("boxed_simple", "42",
+          extract_boxed_content("\\boxed{42}"))
+    check("boxed_nested_frac", "\\frac{1}{2}",
+          extract_boxed_content("\\boxed{\\frac{1}{2}}"))
+    check("boxed_deep_nested", "(3, \\frac{\\pi}{2})",
+          extract_boxed_content("\\boxed{(3, \\frac{\\pi}{2})}"))
+    check("boxed_sqrt", "\\sqrt{x^{2}+1}",
+          extract_boxed_content("\\boxed{\\sqrt{x^{2}+1}}"))
+    check("boxed_multiple_takes_last", "B",
+          extract_boxed_content("\\boxed{A} then \\boxed{B}"))
+    check("boxed_none_when_absent", None,
+          extract_boxed_content("no boxed here"))
 
-    # --- Math Equivalence Tests ---
-    check("identical", True, math_equiv("42", "42"))
-    check("boxed_vs_plain", True, math_equiv("\\boxed{42}", "42"))
-    check("fraction_decimal", True, math_equiv("0.5", "1/2"))
-    check("latex_frac", True, math_equiv("\\frac{1}{2}", "0.5"))
-    check("negative", True, math_equiv("-3", "-3"))
-    check("different_values", False, math_equiv("42", "43"))
-    check("close_but_different", False, math_equiv("0.333", "1/3"))
+    # ================================================================
+    # NORMALIZATION (normalize_math_string)
+    # ================================================================
+    check("norm_boxed_simple", "42",
+          normalize_math_string("\\boxed{42}"))
+    check("norm_boxed_nested", "(3, \\frac{\\pi}{2})",
+          normalize_math_string("\\boxed{(3, \\frac{\\pi}{2})}"))
+    check("norm_dollar_signs", "x+1",
+          normalize_math_string("$x+1$"))
+    check("norm_text_wrapper", "cm",
+          normalize_math_string("\\text{cm}"))
+    check("norm_whitespace", "3 + 4",
+          normalize_math_string("  3  +  4  "))
+    check("norm_trailing_period", "42",
+          normalize_math_string("42."))
+    check("norm_decimal_no_strip", "3.14",
+          normalize_math_string("3.14"))
 
-    # --- GSM8K Extraction Tests ---
-    check("gsm8k_standard", "42", extract_gsm8k_answer("Some steps...\n#### 42"))
-    check("gsm8k_comma", "1234", extract_gsm8k_answer("Some steps...\n#### 1,234"))
-    check("gsm8k_decimal", "3.14", extract_gsm8k_answer("#### 3.14"))
+    # The exact bug from the user's report:
+    # \left( 3, \frac{\pi}{2} \right) should normalize to same as (3, \frac{\pi}{2})
+    check("norm_left_right_parens",
+          normalize_math_string("(3, \\frac{\\pi}{2})"),
+          normalize_math_string("\\left( 3, \\frac{\\pi}{2} \\right)"))
 
-    # --- MC Answer Extraction Tests ---
+    # Whitespace inside parentheses
+    check("norm_space_in_parens", "(3, x)",
+          normalize_math_string("( 3, x )"))
+    check("norm_space_in_brackets", "[1, 2]",
+          normalize_math_string("[ 1, 2 ]"))
+
+    # ================================================================
+    # MATH EQUIVALENCE (math_equiv)
+    # ================================================================
+    check("equiv_identical", True, math_equiv("42", "42"))
+    check("equiv_boxed_vs_plain", True, math_equiv("\\boxed{42}", "42"))
+    check("equiv_fraction_decimal", True, math_equiv("0.5", "1/2"))
+    check("equiv_latex_frac", True, math_equiv("\\frac{1}{2}", "0.5"))
+    check("equiv_negative", True, math_equiv("-3", "-3"))
+    check("equiv_different", False, math_equiv("42", "43"))
+    check("equiv_close_not_equal", False, math_equiv("0.333", "1/3"))
+
+    # The exact user-reported case: coordinate/tuple answers
+    check("equiv_coordinates", True,
+          math_equiv("(3, \\frac{\\pi}{2})",
+                     "\\left( 3, \\frac{\\pi}{2} \\right)"))
+
+    # Boxed coordinate answer vs left/right ground truth
+    check("equiv_boxed_coord_vs_leftright", True,
+          math_equiv("\\boxed{(3, \\frac{\\pi}{2})}",
+                     "\\left( 3, \\frac{\\pi}{2} \\right)"))
+
+    # ================================================================
+    # ANSWER EXTRACTION (extract_model_numeric_answer)
+    # ================================================================
+    check("extract_boxed_simple", "42",
+          extract_model_numeric_answer("\\boxed{42}"))
+    check("extract_boxed_frac", "\\frac{1}{2}",
+          extract_model_numeric_answer("\\boxed{\\frac{1}{2}}"))
+    check("extract_boxed_coord", "(3, \\frac{\\pi}{2})",
+          extract_model_numeric_answer("\\boxed{(3, \\frac{\\pi}{2})}"))
+    check("extract_boxed_sqrt", "\\sqrt{2}",
+          extract_model_numeric_answer("The answer is \\boxed{\\sqrt{2}}."))
+    check("extract_answer_is", "7",
+          extract_model_numeric_answer("The answer is 7."))
+    check("extract_therefore", "100",
+          extract_model_numeric_answer("Therefore, the answer is 100"))
+
+    # Boxed inside prose (the common DeepSeek-R1 format)
+    check("extract_boxed_in_prose", "(3, \\frac{\\pi}{2})",
+          extract_model_numeric_answer(
+              "The polar coordinates are (3, pi/2).\n\n\\boxed{(3, \\frac{\\pi}{2})}"))
+
+    # ================================================================
+    # GSM8K EXTRACTION
+    # ================================================================
+    check("gsm8k_standard", "42",
+          extract_gsm8k_answer("Some steps...\n#### 42"))
+    check("gsm8k_comma", "1234",
+          extract_gsm8k_answer("Some steps...\n#### 1,234"))
+    check("gsm8k_decimal", "3.14",
+          extract_gsm8k_answer("#### 3.14"))
+
+    # ================================================================
+    # MC ANSWER EXTRACTION
+    # ================================================================
     check("mc_answer_is", "A", extract_mc_answer("The answer is A"))
     check("mc_boxed", "B", extract_mc_answer("\\boxed{B}"))
     check("mc_paren", "C", extract_mc_answer("I choose (C)"))
     check("mc_final_line", "D", extract_mc_answer("After analysis:\nD"))
 
-    # --- Numeric Answer Extraction Tests ---
-    check("num_boxed", "42", extract_model_numeric_answer("\\boxed{42}"))
-    check("num_answer_is", "7", extract_model_numeric_answer("The answer is 7."))
-    check("num_therefore", "100", extract_model_numeric_answer("Therefore, the answer is 100"))
-
-    # --- Full Scoring Tests ---
+    # ================================================================
+    # FULL END-TO-END SCORING
+    # ================================================================
     r1 = score_answer("The answer is 42", "42", "exact_match_math")
     check("score_math_correct", True, r1['is_correct'])
 
@@ -519,6 +672,20 @@ def run_scoring_tests():
                        "Some explanation\n#### 7", "exact_match_numeric",
                        answer_extraction="gsm8k")
     check("score_gsm8k_correct", True, r4['is_correct'])
+
+    # THE EXACT BUG FROM THE USER'S PILOT RUN:
+    # Model outputs \boxed{(3, \frac{\pi}{2})} but ground truth uses \left...\right
+    r5 = score_answer(
+        "The polar coordinates are \\((3, \\frac{\\pi}{2})\\).\n\n\\boxed{(3, \\frac{\\pi}{2})}",
+        "\\left( 3, \\frac{\\pi}{2} \\right)",
+        "exact_match_math",
+    )
+    check("score_boxed_coord_pilot_bug", True, r5['is_correct'])
+    check("score_boxed_coord_extraction", "(3, \\frac{\\pi}{2})", r5['extracted_answer'])
+
+    # Another common pattern: \boxed{\frac{a}{b}} vs ground truth a/b
+    r6 = score_answer("\\boxed{\\frac{7}{3}}", "\\frac{7}{3}", "exact_match_math")
+    check("score_frac_boxed", True, r6['is_correct'])
 
     print(f"\nResults: {tests_passed} passed, {tests_failed} failed "
           f"out of {tests_passed + tests_failed} tests")

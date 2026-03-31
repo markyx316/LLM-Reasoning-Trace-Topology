@@ -75,6 +75,14 @@ PYTHONPATH=. python src/modeling/train_and_evaluate.py # 18 tests
 PYTHONPATH=. python scripts/validate_pipeline.py      # 9 steps, 150+ tests
 ```
 
+## Compute Requirements
+
+| Task | GPU Hours | Notes |
+|------|-----------|-------|
+| Primary traces (3,200 items) | 8-12 hrs | 1× A100 or 2× A6000 |
+| Self-consistency (N=8, 700 items) | 16-22 hrs | For baselines only |
+| Feature extraction + training | < 1 hr | CPU only |
+
 ## License
 
 Research code. Model weights are under the DeepSeek-R1 MIT license.

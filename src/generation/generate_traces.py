@@ -172,7 +172,7 @@ def _load_hf_model(model_name, quantize_4bit=False):
     from transformers import AutoModelForCausalLM, AutoTokenizer
     logger.info(f"Loading {model_name} (4bit={quantize_4bit})")
     tok = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-    kw = {"device_map": "auto", "torch_dtype": torch.bfloat16, "trust_remote_code": True}
+    kw = {"device_map": "auto", "dtype": torch.bfloat16, "trust_remote_code": True}
     if quantize_4bit:
         try:
             from transformers import BitsAndBytesConfig
@@ -182,12 +182,62 @@ def _load_hf_model(model_name, quantize_4bit=False):
     logger.info(f"Loaded on {next(mdl.parameters()).device}")
     return mdl, tok
 
+def _fix_byte_level_bpe(text: str) -> str:
+    """
+    Fix text containing raw byte-level BPE tokens instead of decoded characters.
+
+    Some Llama-family tokenizers return intermediate BPE representations
+    where Ġ = space (0x20), Ċ = newline (0x0A), etc., instead of the
+    actual characters. This function converts them back.
+    """
+    # Quick check: if no BPE artifacts present, return as-is
+    if 'Ġ' not in text and 'Ċ' not in text:
+        return text
+
+    # Build the GPT-2 byte-to-unicode mapping
+    # Printable ASCII + Latin-1 supplement characters map to themselves;
+    # all other bytes (0x00-0x20 control chars, 0x7F-0xA0, 0xAD) are
+    # shifted to Unicode code points starting at U+0100.
+    bs = (list(range(ord("!"), ord("~") + 1)) +
+          list(range(ord("¡"), ord("¬") + 1)) +
+          list(range(ord("®"), ord("ÿ") + 1)))
+    cs = bs[:]
+    n = 0
+    for b in range(256):
+        if b not in bs:
+            bs.append(b)
+            cs.append(256 + n)
+            n += 1
+    byte_decoder = {chr(c): bytes([b]) for b, c in zip(bs, cs)}
+
+    try:
+        decoded_bytes = b''
+        for char in text:
+            if char in byte_decoder:
+                decoded_bytes += byte_decoder[char]
+            else:
+                decoded_bytes += char.encode('utf-8', errors='replace')
+        return decoded_bytes.decode('utf-8', errors='replace')
+    except Exception:
+        # Minimal fallback for the two most common cases
+        return text.replace('Ġ', ' ').replace('Ċ', '\n')
+
+
 def _gen_single_hf(prompt, model, tokenizer, temperature=0.6, top_p=0.95,
                     max_new_tokens=32768, extract_logprobs=True):
     import torch
     msgs = [{"role": "user", "content": prompt}]
-    ids = tokenizer.apply_chat_template(msgs, add_generation_prompt=True, return_tensors="pt").to(model.device)
+
+    # apply_chat_template returns a Tensor in some transformers versions
+    # and a BatchEncoding dict in others. Handle both.
+    inputs = tokenizer.apply_chat_template(msgs, add_generation_prompt=True, return_tensors="pt")
+    if isinstance(inputs, torch.Tensor):
+        ids = inputs.to(model.device)
+    else:
+        # BatchEncoding — extract the input_ids tensor
+        ids = inputs["input_ids"].to(model.device)
     il = ids.shape[1]
+
     t0 = time.time()
     with torch.no_grad():
         out = model.generate(ids, max_new_tokens=max_new_tokens, temperature=temperature,
@@ -196,6 +246,10 @@ def _gen_single_hf(prompt, model, tokenizer, temperature=0.6, top_p=0.95,
     gt = time.time() - t0
     gen_ids = out.sequences[0][il:]
     ft = tokenizer.decode(gen_ids, skip_special_tokens=True)
+
+    # Fix byte-level BPE artifacts (Ġ=space, Ċ=newline) that some
+    # Llama-family tokenizers produce
+    ft = _fix_byte_level_bpe(ft)
     mlp = None
     if extract_logprobs and hasattr(out, 'scores') and out.scores:
         try:
