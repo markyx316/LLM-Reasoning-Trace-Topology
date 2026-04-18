@@ -71,15 +71,24 @@ def load_oof(npz_path: str) -> pd.DataFrame:
 
 
 def load_features_csv(glob_pat: str) -> pd.DataFrame:
-    """Concatenate all per-dataset feature CSVs (the *_features_rec.csv)."""
+    """Concatenate all per-dataset feature CSVs (the *_features_rec.csv).
+
+    Derives a 'group' column (e.g. 'math500_qwen7b') from each filename so
+    the join in build_matrix can use (item_id, group) and avoid the ambiguity
+    that arises when qwen and llama CSVs share the same item_ids.
+    """
     paths = sorted(glob.glob(glob_pat))
     logger.info(f"Loading {len(paths)} feature CSVs")
     dfs = []
     for p in paths:
         d = pd.read_csv(p)
+        # Derive group from filename: strip directory and suffix
+        stem = Path(p).stem  # e.g. "math500_qwen7b_features_rec"
+        # Remove trailing _features* suffix to get the dataset-model key
+        group_key = stem.split("_features")[0]  # e.g. "math500_qwen7b"
+        d["group"] = group_key
         dfs.append(d)
     df = pd.concat(dfs, ignore_index=True)
-    # Normalize item_id dtype
     df["item_id"] = df["item_id"].astype(str)
     return df
 
@@ -91,11 +100,11 @@ def build_matrix(deberta_df: pd.DataFrame, step_df: pd.DataFrame,
                  include_feats: bool = True,
                  include_recurrence: bool = True,
                  ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str]]:
-    """Inner-join on item_id. Returns X, y, group, col_names."""
+    """Inner-join on (item_id, group). Returns X, y, group, col_names."""
     d = deberta_df.rename(columns={"prob": "deberta_prob"})[["item_id", "deberta_prob", "y_true", "group"]]
-    s = step_df.rename(columns={"prob": "step_prob"})[["item_id", "step_prob"]]
-    merged = d.merge(s, on="item_id", how="inner")
-    merged = merged.merge(feat_df, on="item_id", how="inner",
+    s = step_df.rename(columns={"prob": "step_prob"})[["item_id", "step_prob", "group"]]
+    merged = d.merge(s, on=["item_id", "group"], how="inner")
+    merged = merged.merge(feat_df, on=["item_id", "group"], how="inner",
                           suffixes=("", "_feat"))
 
     logger.info(f"After join: {len(merged)} items")
