@@ -1,16 +1,15 @@
 """
 run_all_baselines.py — Module 3: Unified Baseline Trainer & Summary Table.
 
-Orchestrates all five baselines across all 8 dataset × model pairs and
+Orchestrates all four baselines across all 8 dataset × model pairs and
 produces a single comparison table.  Can run from scratch (re-trains) or
 just aggregate existing result JSONs.
 
 Baselines:
-  A — Length Only           (trace_token_count + answer_length, LR)
-  B — Lexical Cues          (7 surface-text features, LR)
-  C — Handcrafted           (23 features from feature CSVs, LR + RF + XGBoost)
-  D — TF-IDF Encoder        (raw trace text, TF-IDF bag-of-words + LR)
-  E — Sentence-Transformer  (all-MiniLM-L6-v2 chunk-mean pooling, LR + RF + XGB)
+  A — Length Only    (trace_token_count + answer_length, LR)
+  B — Lexical Cues   (7 surface-text features, LR)
+  C — Handcrafted    (23 features from feature CSVs, LR + RF + XGBoost)
+  D — TF-IDF Encoder (raw trace text, TF-IDF bag-of-words + LR)
 
 Usage:
     # Summarise existing results (fastest — no re-training)
@@ -54,13 +53,12 @@ RESULT_PATHS = {
     "B": "results/baseline_b_{ds}.json",
     "C": "results/baseline_c_{ds}.json",
     "D": "results/baseline_d_{ds}.json",
-    "E": "results/baseline_e_{ds}.json",
 }
 
 # Classifier keys inside each result file
 C_CLASSIFIERS = ["logistic_regression", "random_forest", "xgboost"]
-# Baselines that have per-classifier breakdowns (like C and E)
-MULTI_CLF_BASELINES = {"C", "E"}
+# Baselines that have per-classifier breakdowns
+MULTI_CLF_BASELINES = {"C"}
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +137,7 @@ def load_all_results(results_dir: str = ".") -> dict[str, dict[str, dict]]:
 # Table printing
 # ---------------------------------------------------------------------------
 
-_BL_DISPLAY_ORDER = ["A", "B", "C[LR]", "C[RF]", "C[XGB]", "D", "E[LR]", "E[RF]", "E[XGB]"]
+_BL_DISPLAY_ORDER = ["A", "B", "C[LR]", "C[RF]", "C[XGB]", "D"]
 _BL_HEADERS = {
     "A":      "A:Length",
     "B":      "B:Lexical",
@@ -147,9 +145,6 @@ _BL_HEADERS = {
     "C[RF]":  "C:RF",
     "C[XGB]": "C:XGB",
     "D":      "D:TF-IDF",
-    "E[LR]":  "E:ST-LR",
-    "E[RF]":  "E:ST-RF",
-    "E[XGB]": "E:ST-XGB",
 }
 
 
@@ -303,15 +298,14 @@ def save_summary_csv(
 # ---------------------------------------------------------------------------
 
 def run_all_baselines():
-    """Re-run all 5 baselines from scratch (sequential)."""
-    from src.baselines.baseline_a_length_only   import run_baseline_a, ALL_DATASETS as A_SETS
-    from src.baselines.baseline_b_lexical       import run_baseline_b, ALL_DATASETS as B_SETS
-    from src.baselines.baseline_c_handcrafted   import run_baseline_c, ALL_DATASETS as C_SETS
-    from src.baselines.baseline_d_text_encoder  import run_baseline_d, ALL_DATASETS as D_SETS
-    from src.baselines.baseline_e_sentence_encoder import run_baseline_e, ALL_DATASETS as E_SETS
+    """Re-run all 4 baselines from scratch (sequential)."""
+    from src.baselines.baseline_a_length_only  import run_baseline_a, ALL_DATASETS as A_SETS
+    from src.baselines.baseline_b_lexical      import run_baseline_b, ALL_DATASETS as B_SETS
+    from src.baselines.baseline_c_handcrafted  import run_baseline_c, ALL_DATASETS as C_SETS
+    from src.baselines.baseline_d_text_encoder import run_baseline_d, ALL_DATASETS as D_SETS
 
     print("\n" + "=" * 60)
-    print("STEP 1/5 — Baseline A: Length Only")
+    print("STEP 1/4 — Baseline A: Length Only")
     print("=" * 60)
     for traces_path, out_path in A_SETS:
         if not os.path.exists(traces_path):
@@ -320,7 +314,7 @@ def run_all_baselines():
         run_baseline_a(traces_path, out_path)
 
     print("\n" + "=" * 60)
-    print("STEP 2/5 — Baseline B: Lexical Cues")
+    print("STEP 2/4 — Baseline B: Lexical Cues")
     print("=" * 60)
     for traces_path, out_path in B_SETS:
         if not os.path.exists(traces_path):
@@ -329,7 +323,7 @@ def run_all_baselines():
         run_baseline_b(traces_path, out_path)
 
     print("\n" + "=" * 60)
-    print("STEP 3/5 — Baseline C: Handcrafted Features")
+    print("STEP 3/4 — Baseline C: Handcrafted Features")
     print("=" * 60)
     for csv_path, out_path in C_SETS:
         if not os.path.exists(csv_path):
@@ -338,22 +332,13 @@ def run_all_baselines():
         run_baseline_c(csv_path, out_path)
 
     print("\n" + "=" * 60)
-    print("STEP 4/5 — Baseline D: TF-IDF Text Encoder")
+    print("STEP 4/4 — Baseline D: TF-IDF Text Encoder")
     print("=" * 60)
     for traces_path, out_path in D_SETS:
         if not os.path.exists(traces_path):
             logger.warning(f"Skipping (not found): {traces_path}")
             continue
         run_baseline_d(traces_path, out_path)
-
-    print("\n" + "=" * 60)
-    print("STEP 5/5 — Baseline E: Sentence-Transformer Encoder")
-    print("=" * 60)
-    for traces_path, out_path in E_SETS:
-        if not os.path.exists(traces_path):
-            logger.warning(f"Skipping (not found): {traces_path}")
-            continue
-        run_baseline_e(traces_path, out_path)
 
 
 # ---------------------------------------------------------------------------
@@ -390,8 +375,8 @@ def run_tests():
                 check(f"{ds}_{bl}_auroc_range",
                       0.0 <= auroc <= 1.0,
                       f"auroc_mean={auroc}")
-        # Baselines C and E: check per-classifier summaries
-        for clf_key in ["C[LR]", "C[RF]", "C[XGB]", "E[LR]", "E[RF]", "E[XGB]"]:
+        # Baseline C: check per-classifier summaries
+        for clf_key in ["C[LR]", "C[RF]", "C[XGB]"]:
             s = data[ds].get(clf_key)
             if s:
                 auroc = s.get("auroc_mean", -1)
@@ -432,7 +417,7 @@ def main():
     )
     mode.add_argument(
         "--run-all", action="store_true",
-        help="Re-run all 4 baselines from scratch, then print summary table",
+        help="Re-run all baselines from scratch, then print summary table",
     )
     mode.add_argument(
         "--test", action="store_true",
