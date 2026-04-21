@@ -57,6 +57,11 @@ RECURRENCE_FEATS = [
     "progress_repetition", "termination_recycle", "revision_ineffectiveness",
 ]
 
+ALIGNMENT_FEATS = [
+    "problem_conclusion_sim", "problem_trace_max_sim",
+    "problem_drift", "problem_keyword_coverage",
+]
+
 
 def load_oof(npz_path: str) -> pd.DataFrame:
     """Load an OOF prediction file into a DataFrame keyed by item_id."""
@@ -71,55 +76,76 @@ def load_oof(npz_path: str) -> pd.DataFrame:
 
 
 def load_features_csv(glob_pat: str) -> pd.DataFrame:
-    """Concatenate all per-dataset feature CSVs (the *_features_rec.csv)."""
+    """Concatenate all per-dataset feature CSVs, tagging each row with `group`
+    derived from the filename. `group` disambiguates rows that share item_id
+    across different (dataset, model) combinations (e.g., math500_qwen7b and
+    math500_llama8b both use item_id 'math500_0000')."""
     paths = sorted(glob.glob(glob_pat))
     logger.info(f"Loading {len(paths)} feature CSVs")
     dfs = []
     for p in paths:
         d = pd.read_csv(p)
+        group = (os.path.basename(p)
+                 .replace("_features_align.csv", "")
+                 .replace("_features_rec.csv", "")
+                 .replace("_features.csv", ""))
+        d["group"] = group
         dfs.append(d)
     df = pd.concat(dfs, ignore_index=True)
-    # Normalize item_id dtype
     df["item_id"] = df["item_id"].astype(str)
+    df["group"] = df["group"].astype(str)
     return df
 
 
 def build_matrix(deberta_df: pd.DataFrame, step_df: pd.DataFrame,
                  feat_df: pd.DataFrame,
+                 cond_df: pd.DataFrame | None = None,
                  include_deberta: bool = True,
                  include_step: bool = True,
+                 include_conditioned: bool = False,
                  include_feats: bool = True,
                  include_recurrence: bool = True,
+                 include_alignment: bool = False,
                  ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str]]:
-    """Inner-join on item_id. Returns X, y, group, col_names."""
-    d = deberta_df.rename(columns={"prob": "deberta_prob"})[["item_id", "deberta_prob", "y_true", "group"]]
-    s = step_df.rename(columns={"prob": "step_prob"})[["item_id", "step_prob"]]
-    merged = d.merge(s, on="item_id", how="inner")
-    merged = merged.merge(feat_df, on="item_id", how="inner",
+    """Inner-join on (item_id, group). Returns X, y, group, col_names.
+
+    Joining on item_id alone would cartesian-product rows that share
+    item_id across (dataset, model) pairs (e.g. math500_0000 appears in
+    both Qwen and Llama traces). We disambiguate with `group`."""
+    d = deberta_df.rename(columns={"prob": "deberta_prob"})[["item_id", "group", "deberta_prob", "y_true"]]
+    s = step_df.rename(columns={"prob": "step_prob"})[["item_id", "group", "step_prob"]]
+    merged = d.merge(s, on=["item_id", "group"], how="inner")
+    if cond_df is not None:
+        c = cond_df.rename(columns={"prob": "cond_prob"})[["item_id", "group", "cond_prob"]]
+        merged = merged.merge(c, on=["item_id", "group"], how="inner")
+    merged = merged.merge(feat_df, on=["item_id", "group"], how="inner",
                           suffixes=("", "_feat"))
 
     logger.info(f"After join: {len(merged)} items")
 
-    # Use the y_true from DeBERTa OOF (authoritative, same as feature CSV's is_correct)
     y = merged["y_true"].to_numpy().astype(int)
     group = merged["group"].to_numpy()
 
-    # Select meta-learner input columns
     cols = []
     if include_deberta:
         cols.append("deberta_prob")
     if include_step:
         cols.append("step_prob")
+    if include_conditioned and "cond_prob" in merged.columns:
+        cols.append("cond_prob")
 
-    # Handcrafted 25 (excluding labels/ids/recurrence/group)
-    exclude = {"item_id", "dataset", "is_correct", "y_true",
-               "deberta_prob", "step_prob", "group"} | set(RECURRENCE_FEATS)
+    # Handcrafted 25 (excluding labels/ids/recurrence/alignment/group)
+    exclude = ({"item_id", "dataset", "is_correct", "y_true",
+                "deberta_prob", "step_prob", "cond_prob", "group"}
+               | set(RECURRENCE_FEATS) | set(ALIGNMENT_FEATS))
     handcrafted_cols = [c for c in merged.columns
                         if c not in exclude and merged[c].dtype != object]
     if include_feats:
         cols.extend(handcrafted_cols)
     if include_recurrence:
         cols.extend([c for c in RECURRENCE_FEATS if c in merged.columns])
+    if include_alignment:
+        cols.extend([c for c in ALIGNMENT_FEATS if c in merged.columns])
 
     X = merged[cols].to_numpy(dtype=float)
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
@@ -156,7 +182,7 @@ def run_meta_cv(X: np.ndarray, y: np.ndarray, group: np.ndarray,
             m = XGBClassifier(n_estimators=300, max_depth=6, learning_rate=0.05,
                               scale_pos_weight=n_neg / n_pos,
                               random_state=seed, eval_metric="logloss",
-                              use_label_encoder=False)
+                              n_jobs=-1, tree_method="hist")
         else:
             raise ValueError(clf_name)
 
@@ -190,7 +216,10 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--deberta-oof", required=True)
     p.add_argument("--step-oof", required=True)
-    p.add_argument("--features-glob", required=True)
+    p.add_argument("--conditioned-oof", default=None,
+                   help="OOF .npz from problem-conditioned DeBERTa (optional)")
+    p.add_argument("--features-glob", required=True,
+                   help="Feature CSVs (use *_features_align.csv when available)")
     p.add_argument("--output", required=True)
     p.add_argument("--clf", default="all", choices=["lr", "rf", "xgb", "all"])
     p.add_argument("--seed", type=int, default=42)
@@ -202,28 +231,42 @@ def main():
 
     deberta_df = load_oof(args.deberta_oof)
     step_df = load_oof(args.step_oof)
+    cond_df = load_oof(args.conditioned_oof) if args.conditioned_oof else None
     feat_df = load_features_csv(args.features_glob)
 
-    logger.info(f"DeBERTa OOF rows: {len(deberta_df)}")
-    logger.info(f"Step OOF rows:    {len(step_df)}")
-    logger.info(f"Feature rows:     {len(feat_df)}")
+    logger.info(f"DeBERTa OOF rows:        {len(deberta_df)}")
+    logger.info(f"Step OOF rows:           {len(step_df)}")
+    if cond_df is not None:
+        logger.info(f"Conditioned OOF rows:    {len(cond_df)}")
+    logger.info(f"Feature rows:            {len(feat_df)}")
 
-    # ---------- Variants to try ----------
-    variants = {
-        "deberta_only":        dict(include_deberta=True,  include_step=False, include_feats=False, include_recurrence=False),
-        "step_only":           dict(include_deberta=False, include_step=True,  include_feats=False, include_recurrence=False),
-        "handcrafted25_only":  dict(include_deberta=False, include_step=False, include_feats=True,  include_recurrence=False),
-        "handcrafted+rec":     dict(include_deberta=False, include_step=False, include_feats=True,  include_recurrence=True),
-        "deberta+feats":       dict(include_deberta=True,  include_step=False, include_feats=True,  include_recurrence=True),
-        "deberta+step":        dict(include_deberta=True,  include_step=True,  include_feats=False, include_recurrence=False),
-        "FULL_HYBRID":         dict(include_deberta=True,  include_step=True,  include_feats=True,  include_recurrence=True),
+    # ---------- Variants ----------
+    base_variants = {
+        "deberta_only":        dict(include_deberta=True,  include_step=False, include_feats=False, include_recurrence=False, include_alignment=False),
+        "step_only":           dict(include_deberta=False, include_step=True,  include_feats=False, include_recurrence=False, include_alignment=False),
+        "handcrafted25_only":  dict(include_deberta=False, include_step=False, include_feats=True,  include_recurrence=False, include_alignment=False),
+        "handcrafted+rec":     dict(include_deberta=False, include_step=False, include_feats=True,  include_recurrence=True,  include_alignment=False),
+        "handcrafted+rec+align": dict(include_deberta=False, include_step=False, include_feats=True, include_recurrence=True, include_alignment=True),
+        "deberta+feats":       dict(include_deberta=True,  include_step=False, include_feats=True,  include_recurrence=True,  include_alignment=False),
+        "deberta+step":        dict(include_deberta=True,  include_step=True,  include_feats=False, include_recurrence=False, include_alignment=False),
+        "deberta+feats+align": dict(include_deberta=True,  include_step=False, include_feats=True,  include_recurrence=True,  include_alignment=True),
+        "FULL_HYBRID":         dict(include_deberta=True,  include_step=True,  include_feats=True,  include_recurrence=True,  include_alignment=True),
     }
+    if cond_df is not None:
+        base_variants["conditioned_only"] = dict(include_deberta=False, include_step=False, include_conditioned=True, include_feats=False, include_recurrence=False, include_alignment=False)
+        base_variants["deberta+cond"] = dict(include_deberta=True, include_step=False, include_conditioned=True, include_feats=False, include_recurrence=False, include_alignment=False)
+        base_variants["conditioned+feats+align"] = dict(include_deberta=False, include_step=False, include_conditioned=True, include_feats=True, include_recurrence=True, include_alignment=True)
+        base_variants["deberta+cond+feats+align"] = dict(include_deberta=True, include_step=False, include_conditioned=True, include_feats=True, include_recurrence=True, include_alignment=True)
+        base_variants["ULTRA_HYBRID"] = dict(include_deberta=True, include_step=True, include_conditioned=True, include_feats=True, include_recurrence=True, include_alignment=True)
+
+    variants = base_variants
 
     clf_list = [args.clf] if args.clf != "all" else ["lr", "rf", "xgb"]
 
     all_results = {"variants": {}}
     for vname, cfg in variants.items():
-        X, y, group, cols = build_matrix(deberta_df, step_df, feat_df, **cfg)
+        X, y, group, cols = build_matrix(deberta_df, step_df, feat_df,
+                                          cond_df=cond_df, **cfg)
         variant_block = {"n_features": X.shape[1],
                          "n_samples": X.shape[0],
                          "feature_names": cols,

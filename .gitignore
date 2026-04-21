@@ -214,3 +214,7 @@ logs/
 
 # Large precomputed embeddings (can be regenerated via build_step_embeddings.py)
 data/step_embeddings/
+
+# Large hidden-state extractions (can be regenerated from traces)
+data/hidden_atlas/
+data/hidden_states/
