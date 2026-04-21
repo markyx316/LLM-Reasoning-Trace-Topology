@@ -1,0 +1,172 @@
+{
+  "transfer": {
+    "train_dataset": "arc_challenge_llama8b",
+    "test_dataset": "arc_challenge_qwen7b",
+    "classifier": "random_forest",
+    "metrics": {
+      "method": "transfer_arc_challenge_llama8b_to_arc_challenge_qwen7b",
+      "auroc": 0.6107214832728738,
+      "auprc": 0.7600699313714527,
+      "ece": 0.12599921919166496,
+      "accuracy": 0.6783276450511946,
+      "f1": 0.7809413131900058,
+      "accuracy_at_80": 0.7502668089647813,
+      "accuracy_at_90": 0.7267552182163188,
+      "au_acc_cov": 0.7159477222244359,
+      "n_samples": 1172,
+      "n_correct": 827,
+      "n_incorrect": 345,
+      "base_accuracy": 0.7056313993174061
+    },
+    "feature_importance": [
+      {
+        "feature": "progress_repetition",
+        "importance": 0.07983763237308397
+      },
+      {
+        "feature": "semantic_recurrence_rate",
+        "importance": 0.06920145525178553
+      },
+      {
+        "feature": "transition_entropy",
+        "importance": 0.06620989216167453
+      },
+      {
+        "feature": "max_semantic_cycle_span",
+        "importance": 0.06102717004019572
+      },
+      {
+        "feature": "prop_hesitation",
+        "importance": 0.05952165220236921
+      },
+      {
+        "feature": "repetition_rate_4gram",
+        "importance": 0.05917467498047888
+      },
+      {
+        "feature": "termination_recycle",
+        "importance": 0.056990164057296566
+      },
+      {
+        "feature": "total_tokens",
+        "importance": 0.05587133831003755
+      },
+      {
+        "feature": "wait_ratio",
+        "importance": 0.05066048900912337
+      },
+      {
+        "feature": "prop_forward",
+        "importance": 0.04992107642018872
+      },
+      {
+        "feature": "bt_position_mean",
+        "importance": 0.04756046049073817
+      },
+      {
+        "feature": "prop_conclusion",
+        "importance": 0.04281855749233597
+      },
+      {
+        "feature": "max_forward_run",
+        "importance": 0.04011572291750787
+      },
+      {
+        "feature": "revision_ineffectiveness",
+        "importance": 0.038191954737220035
+      },
+      {
+        "feature": "total_episodes",
+        "importance": 0.03772785267010786
+      },
+      {
+        "feature": "prop_backtrack",
+        "importance": 0.03287004177548001
+      },
+      {
+        "feature": "negation_count",
+        "importance": 0.03156295413508762
+      },
+      {
+        "feature": "cycle_count",
+        "importance": 0.025324991063099597
+      },
+      {
+        "feature": "question_mark_count",
+        "importance": 0.023562862559738707
+      },
+      {
+        "feature": "prop_subgoal",
+        "importance": 0.02192910642506328
+      },
+      {
+        "feature": "backtrack_count",
+        "importance": 0.011855129796662046
+      },
+      {
+        "feature": "prop_restart",
+        "importance": 0.009962034438311111
+      },
+      {
+        "feature": "prop_verification",
+        "importance": 0.00803812099450303
+      },
+      {
+        "feature": "first_conclusion_pos",
+        "importance": 0.006618380549460186
+      },
+      {
+        "feature": "vf_ratio",
+        "importance": 0.006382838379461871
+      },
+      {
+        "feature": "restart_count",
+        "importance": 0.0043696172016869
+      },
+      {
+        "feature": "verification_count",
+        "importance": 0.0026938295673015755
+      },
+      {
+        "feature": "v_clustering",
+        "importance": 0.0
+      }
+    ],
+    "train_size": 1172,
+    "test_size": 1172,
+    "train_accuracy": 0.6569965870307167,
+    "test_accuracy": 0.7056313993174061
+  },
+  "n_features": 28,
+  "feature_names": [
+    "total_tokens",
+    "total_episodes",
+    "prop_forward",
+    "prop_verification",
+    "prop_backtrack",
+    "prop_restart",
+    "prop_hesitation",
+    "prop_subgoal",
+    "prop_conclusion",
+    "backtrack_count",
+    "verification_count",
+    "restart_count",
+    "vf_ratio",
+    "bt_position_mean",
+    "first_conclusion_pos",
+    "v_clustering",
+    "max_forward_run",
+    "transition_entropy",
+    "cycle_count",
+    "wait_ratio",
+    "question_mark_count",
+    "negation_count",
+    "repetition_rate_4gram",
+    "semantic_recurrence_rate",
+    "max_semantic_cycle_span",
+    "progress_repetition",
+    "termination_recycle",
+    "revision_ineffectiveness"
+  ],
+  "variant": "rec"
+}

@@ -1,0 +1,25 @@
+{
+  "path": "results/route_ab/trace_gnn_structural_pooled_oof.npz",
+  "kind": "tracegin_structural_pooled",
+  "protocol": "leaky_best_epoch_on_val_plus_earlystop",
+  "leaky": false,
+  "why_flagged": "Pooled TraceGIN-structural; OOF picked by best val_AUROC + early stop. Double leak.",
+  "summary": {
+    "exists": true,
+    "n_samples": 6398,
+    "has_oof_fold": true,
+    "has_groups": true,
+    "keys": [
+      "item_ids",
+      "groups",
+      "y_true",
+      "oof_prob",
+      "oof_fold",
+      "seed",
+      "n_splits"
+    ],
+    "sha256_prefix": "2bc74f24cfb0e16c",
+    "size_bytes": 37451,
+    "pooled_auroc": 0.6433484033782714
+  }
+}

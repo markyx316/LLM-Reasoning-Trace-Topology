@@ -1,0 +1,172 @@
+{
+  "transfer": {
+    "train_dataset": "math500_qwen7b",
+    "test_dataset": "math500_llama8b",
+    "classifier": "random_forest",
+    "metrics": {
+      "method": "transfer_math500_qwen7b_to_math500_llama8b",
+      "auroc": 0.5787291890440386,
+      "auprc": 0.6589315128139066,
+      "ece": 0.09317540036711514,
+      "accuracy": 0.632,
+      "f1": 0.7378917378917379,
+      "accuracy_at_80": 0.65,
+      "accuracy_at_90": 0.6377777777777778,
+      "au_acc_cov": 0.6211055351469473,
+      "n_samples": 500,
+      "n_correct": 304,
+      "n_incorrect": 196,
+      "base_accuracy": 0.608
+    },
+    "feature_importance": [
+      {
+        "feature": "max_semantic_cycle_span",
+        "importance": 0.048867818032397495
+      },
+      {
+        "feature": "progress_repetition",
+        "importance": 0.04702024227367218
+      },
+      {
+        "feature": "total_tokens",
+        "importance": 0.046979961246378404
+      },
+      {
+        "feature": "wait_ratio",
+        "importance": 0.046883333732010056
+      },
+      {
+        "feature": "prop_subgoal",
+        "importance": 0.04650274717426055
+      },
+      {
+        "feature": "prop_hesitation",
+        "importance": 0.04611703544132869
+      },
+      {
+        "feature": "transition_entropy",
+        "importance": 0.044848935342974426
+      },
+      {
+        "feature": "cycle_count",
+        "importance": 0.044746282855760385
+      },
+      {
+        "feature": "max_forward_run",
+        "importance": 0.04078818949692433
+      },
+      {
+        "feature": "repetition_rate_4gram",
+        "importance": 0.04063958514236961
+      },
+      {
+        "feature": "vf_ratio",
+        "importance": 0.03936992041268409
+      },
+      {
+        "feature": "semantic_recurrence_rate",
+        "importance": 0.038905270575485595
+      },
+      {
+        "feature": "prop_backtrack",
+        "importance": 0.03882649193320173
+      },
+      {
+        "feature": "total_episodes",
+        "importance": 0.037597826877805926
+      },
+      {
+        "feature": "prop_forward",
+        "importance": 0.03748682072669872
+      },
+      {
+        "feature": "backtrack_count",
+        "importance": 0.037480172509205115
+      },
+      {
+        "feature": "prop_verification",
+        "importance": 0.03578217876457433
+      },
+      {
+        "feature": "termination_recycle",
+        "importance": 0.03573462245377942
+      },
+      {
+        "feature": "prop_conclusion",
+        "importance": 0.034367387579288804
+      },
+      {
+        "feature": "negation_count",
+        "importance": 0.03431242197875403
+      },
+      {
+        "feature": "bt_position_mean",
+        "importance": 0.032743829729118795
+      },
+      {
+        "feature": "revision_ineffectiveness",
+        "importance": 0.030065597422122243
+      },
+      {
+        "feature": "prop_restart",
+        "importance": 0.029908380823401366
+      },
+      {
+        "feature": "v_clustering",
+        "importance": 0.023652479827282736
+      },
+      {
+        "feature": "question_mark_count",
+        "importance": 0.022434604816285213
+      },
+      {
+        "feature": "restart_count",
+        "importance": 0.01586263821316105
+      },
+      {
+        "feature": "first_conclusion_pos",
+        "importance": 0.011247192965425899
+      },
+      {
+        "feature": "verification_count",
+        "importance": 0.010828031653648746
+      }
+    ],
+    "train_size": 500,
+    "test_size": 500,
+    "train_accuracy": 0.722,
+    "test_accuracy": 0.608
+  },
+  "n_features": 28,
+  "feature_names": [
+    "total_tokens",
+    "total_episodes",
+    "prop_forward",
+    "prop_verification",
+    "prop_backtrack",
+    "prop_restart",
+    "prop_hesitation",
+    "prop_subgoal",
+    "prop_conclusion",
+    "backtrack_count",
+    "verification_count",
+    "restart_count",
+    "vf_ratio",
+    "bt_position_mean",
+    "first_conclusion_pos",
+    "v_clustering",
+    "max_forward_run",
+    "transition_entropy",
+    "cycle_count",
+    "wait_ratio",
+    "question_mark_count",
+    "negation_count",
+    "repetition_rate_4gram",
+    "semantic_recurrence_rate",
+    "max_semantic_cycle_span",
+    "progress_repetition",
+    "termination_recycle",
+    "revision_ineffectiveness"
+  ],
+  "variant": "rec"
+}

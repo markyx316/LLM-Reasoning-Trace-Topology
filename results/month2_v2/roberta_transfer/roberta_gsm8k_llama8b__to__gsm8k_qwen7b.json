@@ -1,0 +1,31 @@
+{
+  "model": "roberta-base",
+  "source": "gsm8k_llama8b",
+  "target": "gsm8k_qwen7b",
+  "diagonal": false,
+  "epochs": 3,
+  "lr": 2e-05,
+  "batch_size": 16,
+  "seed": 42,
+  "n_source_train": 1319,
+  "n_target_eval": 1319,
+  "source_pos_rate": 0.45564821834723274,
+  "target_pos_rate": 0.6724791508718726,
+  "metrics": {
+    "method": "gsm8k_llama8b__to__gsm8k_qwen7b",
+    "auroc": 0.8054276796525951,
+    "auprc": 0.8847122945954062,
+    "ece": 0.156147469843401,
+    "accuracy": 0.7179681576952237,
+    "f1": 0.7657430730478589,
+    "accuracy_at_80": 0.7658767772511849,
+    "accuracy_at_90": 0.7228306655433867,
+    "prr": 0.6822623939022302,
+    "aurc_method": 0.1453944768486377,
+    "aurc_random": 0.32727253915911425,
+    "aurc_oracle": 0.060691728116288236,
+    "n_samples": 1319,
+    "n_correct": 887,
+    "base_accuracy": 0.6724791508718726
+  }
+}

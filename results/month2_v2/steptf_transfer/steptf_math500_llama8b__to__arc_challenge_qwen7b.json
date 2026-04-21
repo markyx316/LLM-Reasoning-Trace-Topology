@@ -1,0 +1,30 @@
+{
+  "source": "math500_llama8b",
+  "target": "arc_challenge_qwen7b",
+  "diagonal": false,
+  "epochs": 15,
+  "lr": 0.0003,
+  "batch_size": 32,
+  "seed": 42,
+  "n_source_train": 500,
+  "n_target_eval": 1172,
+  "source_pos_rate": 0.608,
+  "target_pos_rate": 0.7056313993174061,
+  "metrics": {
+    "method": "math500_llama8b__to__arc_challenge_qwen7b",
+    "auroc": 0.5777141054623837,
+    "auprc": 0.7515574042385444,
+    "ece": 0.32126021041906744,
+    "accuracy": 0.48378839590443684,
+    "f1": 0.5179282868525896,
+    "accuracy_at_80": 0.7214514407684098,
+    "accuracy_at_90": 0.715370018975332,
+    "prr": 0.173985077437054,
+    "aurc_method": 0.2513560896787328,
+    "aurc_random": 0.29411743293457115,
+    "aurc_oracle": 0.048341508437201725,
+    "n_samples": 1172,
+    "n_correct": 827,
+    "base_accuracy": 0.7056313993174061
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "source": "arc_challenge_qwen7b",
+  "target": "gpqa_diamond_qwen7b",
+  "diagonal": false,
+  "epochs": 15,
+  "lr": 0.0003,
+  "batch_size": 32,
+  "seed": 42,
+  "n_source_train": 1172,
+  "n_target_eval": 198,
+  "source_pos_rate": 0.7056313993174061,
+  "target_pos_rate": 0.43434343434343436,
+  "metrics": {
+    "method": "arc_challenge_qwen7b__to__gpqa_diamond_qwen7b",
+    "auroc": 0.7326619601328904,
+    "auprc": 0.6555482621144096,
+    "ece": 0.12523430194517576,
+    "accuracy": 0.7070707070707071,
+    "f1": 0.5857142857142857,
+    "accuracy_at_80": 0.4873417721518987,
+    "accuracy_at_90": 0.46629213483146065,
+    "prr": 0.46073754808264944,
+    "aurc_method": 0.39723151985385596,
+    "aurc_random": 0.5627997143148658,
+    "aurc_oracle": 0.20344503365118055,
+    "n_samples": 198,
+    "n_correct": 86,
+    "base_accuracy": 0.43434343434343436
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "path": "results/month2/deberta_pooled_oof.npz",
+  "kind": "deberta_pooled",
+  "protocol": "leaky_best_epoch_on_val",
+  "leaky": false,
+  "why_flagged": "Pooled DeBERTa-v3-base fine-tune; OOF fold predictions were picked by best val_AUROC across 3 epochs.",
+  "summary": {
+    "exists": true,
+    "n_samples": 6378,
+    "has_oof_fold": true,
+    "has_groups": true,
+    "keys": [
+      "item_ids",
+      "groups",
+      "y_true",
+      "oof_prob",
+      "oof_fold",
+      "seed",
+      "n_splits"
+    ],
+    "sha256_prefix": "b6d19638c957568c",
+    "size_bytes": 45301,
+    "pooled_auroc": 0.7625790462424148
+  }
+}

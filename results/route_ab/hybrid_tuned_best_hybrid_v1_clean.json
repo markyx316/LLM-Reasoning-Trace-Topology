@@ -1,0 +1,45 @@
+{
+  "study_name": "hybrid_v1_clean",
+  "n_trials": 2000,
+  "best_trial_number": 1800,
+  "best_weighted_auroc": 0.7777248923473827,
+  "best_pooled_auroc": 0.8053842992190712,
+  "best_elapsed_sec": 0.13658475875854492,
+  "best_params": {
+    "family": "lr",
+    "feature_subset": "oof+hand",
+    "scaler": "robust",
+    "add_group_dummies": true,
+    "isotonic": false,
+    "lr_C": 0.0454710975896273,
+    "lr_penalty": "l1",
+    "lr_class_weight_balanced": false
+  },
+  "provenance": {
+    "oof_roberta": {
+      "leaky": false,
+      "protocol": "leaky_best_epoch_on_val"
+    },
+    "oof_deberta": {
+      "leaky": false,
+      "protocol": "leaky_best_epoch_on_val"
+    },
+    "oof_step": {
+      "leaky": false,
+      "protocol": "leaky_best_epoch_on_val"
+    },
+    "oof_gin_hyb": {
+      "leaky": false,
+      "protocol": "leaky_best_epoch_on_val_plus_earlystop"
+    },
+    "oof_gin_str": {
+      "leaky": false,
+      "protocol": "leaky_best_epoch_on_val_plus_earlystop"
+    },
+    "oof_shapelet": {
+      "leaky": false,
+      "protocol": "clean_no_epoch_selection"
+    }
+  },
+  "any_leaky_in_table": false
+}

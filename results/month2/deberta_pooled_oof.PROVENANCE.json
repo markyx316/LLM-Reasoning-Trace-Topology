@@ -1,0 +1,10 @@
+{
+  "path": "results/month2/deberta_pooled_oof.npz",
+  "sha256_prefix": "b6d19638c957568c",
+  "n_samples": 6378,
+  "protocol": "leaky_best_epoch_on_val",
+  "description": "DeBERTa OOF produced with best-epoch-on-val model selection (train_one_fold selected best_probs by max val_AUROC per fold). This is test-set model selection and inflates OOF AUROC. Do NOT use as a base learner in a stacker without re-generating with the patched last-epoch protocol.",
+  "pooled_auroc_reported": 0.7626,
+  "fix_applied": "src/modeling/deberta_baseline.py now returns last-epoch OOF",
+  "rerun_command": "PYTHONPATH=. python src/modeling/deberta_baseline.py --traces-glob 'data/traces/*_traces.jsonl' --output results/month2/deberta_pooled_clean.json --epochs 3 --batch-size 8 --lr 2e-5"
+}

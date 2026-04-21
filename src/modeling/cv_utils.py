@@ -48,13 +48,66 @@ def selective_metrics(y_true: np.ndarray, y_prob: np.ndarray) -> dict:
     }
 
 
+def prediction_rejection_ratio(y_true: np.ndarray, y_prob: np.ndarray) -> dict:
+    """
+    Prediction Rejection Ratio (Malinin & Gales 2021; community standard 2025).
+
+    Sweeps the rejection fraction r in [0, 1]. At each r the lowest-confidence
+    fraction r is rejected; risk = error rate over the retained items.
+    Three risk curves:
+      - method  : reject by ascending confidence (the UQ method's ranking)
+      - random  : reject uniformly at random (constant risk == base error rate)
+      - oracle  : reject errors first (lower bound on retained risk)
+
+    PRR = (AURC_random - AURC_method) / (AURC_random - AURC_oracle)
+    Normalized so 1.0 == oracle, 0.0 == random, < 0 == worse than random.
+    Returns the ratio plus the three raw AURCs for inspection.
+    """
+    y_true = np.asarray(y_true).astype(int)
+    y_prob = np.asarray(y_prob).astype(float)
+    n = len(y_true)
+    if n == 0:
+        return {"prr": 0.0, "aurc_method": 0.0, "aurc_random": 0.0, "aurc_oracle": 0.0}
+    n_err = int((1 - y_true).sum())
+    base_err = n_err / n
+
+    # Confidence-sorted: most confident first. At coverage k (= n - r*n retained),
+    # risk_method[k] = errors_in_top_k / k.
+    order = np.argsort(-y_prob, kind="stable")
+    err_sorted = (1 - y_true[order]).astype(np.int64)
+    cum_err = np.cumsum(err_sorted)
+    k = np.arange(1, n + 1)
+    risk_method = cum_err / k                              # shape (n,)
+
+    # Oracle: rank correct items first (errors retained only when forced to).
+    # If we keep the top k items, the oracle keeps min(k, n_correct) corrects
+    # and max(0, k - n_correct) errors.
+    n_correct = n - n_err
+    forced_err = np.maximum(0, k - n_correct)
+    risk_oracle = forced_err / k
+
+    # Random: expected risk == base error rate at every coverage.
+    risk_random = np.full(n, base_err)
+
+    # Coverage axis is k/n; integrate via trapezoidal rule.
+    cov = k / n
+    aurc_method = float(np.trapezoid(risk_method, cov))
+    aurc_random = float(np.trapezoid(risk_random, cov))
+    aurc_oracle = float(np.trapezoid(risk_oracle, cov))
+    denom = aurc_random - aurc_oracle
+    prr = float((aurc_random - aurc_method) / denom) if denom > 1e-12 else 0.0
+    return {"prr": prr, "aurc_method": aurc_method,
+            "aurc_random": aurc_random, "aurc_oracle": aurc_oracle}
+
+
 def evaluate(y_true, y_prob, name: str = "") -> dict:
     y_true = np.asarray(y_true).astype(int)
     y_prob = np.asarray(y_prob).astype(float)
     if len(np.unique(y_true)) < 2:
         return {"method": name, "auroc": 0.5, "auprc": float(y_true.mean()),
                 "ece": 0.0, "accuracy": float(y_true.mean()), "f1": 0.0,
-                "n_samples": len(y_true)}
+                "prr": 0.0, "aurc_method": 0.0, "aurc_random": 0.0,
+                "aurc_oracle": 0.0, "n_samples": len(y_true)}
     auroc = float(roc_auc_score(y_true, y_prob))
     auprc = float(average_precision_score(y_true, y_prob))
     ece = compute_ece(y_true, y_prob)
@@ -62,10 +115,15 @@ def evaluate(y_true, y_prob, name: str = "") -> dict:
     acc = float(accuracy_score(y_true, y_pred))
     f1 = float(f1_score(y_true, y_pred, zero_division=0))
     sel = selective_metrics(y_true, y_prob)
+    prr = prediction_rejection_ratio(y_true, y_prob)
     return {"method": name, "auroc": auroc, "auprc": auprc, "ece": ece,
             "accuracy": acc, "f1": f1,
             "accuracy_at_80": sel["accuracy_at_80"],
             "accuracy_at_90": sel["accuracy_at_90"],
+            "prr": prr["prr"],
+            "aurc_method": prr["aurc_method"],
+            "aurc_random": prr["aurc_random"],
+            "aurc_oracle": prr["aurc_oracle"],
             "n_samples": len(y_true), "n_correct": int(y_true.sum()),
             "base_accuracy": float(y_true.mean())}
 
@@ -101,7 +159,8 @@ def stratified_split(y: np.ndarray, group_id: Optional[np.ndarray] = None,
 
 def aggregate_folds(fold_metrics: list[dict],
                     keys: tuple = ("auroc", "auprc", "ece",
-                                   "accuracy_at_80", "accuracy_at_90")) -> dict:
+                                   "accuracy_at_80", "accuracy_at_90",
+                                   "prr")) -> dict:
     out = {}
     for k in keys:
         vals = [fm[k] for fm in fold_metrics if k in fm]
