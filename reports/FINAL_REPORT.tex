@@ -1,0 +1,412 @@
+\documentclass{article}
+
+% NeurIPS 2025 style — preprint disables the "Submitted to NeurIPS" footer
+% and the line numbers, and reveals real author names.
+% natbib is loaded by neurips_2025; we want numerical citation style.
+\PassOptionsToPackage{numbers,sort&compress}{natbib}
+\usepackage[preprint]{neurips_2025}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{url}
+
+\title{SuperHybrid: Single-Pass Black-Box Uncertainty\\
+       Quantification for LLM Reasoning Traces}
+
+\author{
+  Peng Chen \\
+  Yale University \\
+  \texttt{peng.chen@yale.edu} \\
+  \And
+  Lixing Lin \\
+  Yale University \\
+  \texttt{lixing.lin@yale.edu} \\
+  \And
+  Youxuan Ma \\
+  Yale University \\
+  \texttt{youxuan.ma@yale.edu}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We ask whether a \emph{single} reasoning trace from a reasoning LLM, observed
+only as black-box surface text, contains enough signal to predict whether the
+model's final answer is correct---at one generation, with no logits, no
+sampling, and no model-side self-report. We introduce \textbf{SuperHybrid}, a
+stacking pipeline that combines four complementary views of a trace: (i) a
+fine-tuned text encoder over the trace tail, (ii) a problem-conditioned
+cross-encoder, (iii) a multi-layer probe over the generator's hidden states at
+the answer-marker position, and (iv) a small set of content-free behavioral
+features parsed from the trace text. Across $6\,378$ traces spanning four
+benchmarks (MATH500, GSM8K, GPQA-Diamond, ARC-Challenge) and two
+reasoning-distilled models (DeepSeek-R1-Distill-Qwen-7B and Llama-8B),
+SuperHybrid reaches pooled AUROC \textbf{0.815} (LR meta-learner) /
+\textbf{0.807} (RF) with expected calibration error \textbf{0.042}, beating a
+fine-tuned DeBERTa-v3 read of the trace by \textbf{$+0.05$ AUROC} (paired DeLong
+$p < 10^{-19}$) and halving its ECE. On MATH500-Qwen7B alone the system reaches
+\textbf{0.934} AUROC. An ablation across $328$ additional handcrafted structural features
+($n$-gram motifs, graph topology, timing, persistent homology) adds
+$\le 0.005$ AUROC---a \emph{text-saturation} result that informs the recipe:
+a small text + probe + random-forest stack is enough.
+\end{abstract}
+
+\section{Introduction}
+
+When an LLM solves $x^2 + 5x + 6 = 0$ and returns $x = -2$ or $x = -3$, a user
+able to verify the work would not have needed the LLM in the first place. This
+\emph{verifiability gap} is the core deployment problem for reasoning-style
+LLMs, and three established families of uncertainty quantification (UQ) all
+fail to close it cheaply. \textbf{Logit-based methods} (perplexity, token
+entropy) need white-box access to the generator---increasingly unavailable as
+frontier models go API-only. \textbf{Sampling methods} (self-consistency,
+semantic entropy) require $N \ge 5$ independent generations per query,
+multiplying inference cost $5$--$20\times$---prohibitive when reasoning traces
+already span thousands of tokens. \textbf{Verbalized confidence} (``How
+confident are you, 0--100?'') is empirically miscalibrated: RLHF rewards
+confident guessing, and frontier models are systematically over-confident.
+
+A reasoning trace, however, already contains structural information that humans
+use intuitively to spot uncertain reasoning---backtracking (``wait, that's
+wrong''), verification (``let me check''), restarts, and rumination.
+Marjanovi\'{c} et al.~\cite{thoughtology} document on AIME-24 that
+\emph{correct} DeepSeek-R1 traces average $\approx 2{,}000$ tokens whereas
+\emph{incorrect} ones average $\approx 4{,}000$, and rumination rate is
+negatively correlated with accuracy. Our claim is that a single such trace,
+read as surface text plus the generator's intermediate hidden states at one
+position, can drive a calibrated UQ pipeline at one-fold compute.
+
+\paragraph{Contributions.}
+(i) We propose \textbf{SuperHybrid}, a four-signal stacked predictor of
+single-trace correctness that operates at one generation, requires only the
+trace text and a single hidden-state slice, and matches or beats sampling-based
+UQ at a fraction of the cost.
+(ii) We report pooled AUROC $0.815$ with ECE $0.042$ across $4$ benchmarks
+$\times\,2$ models, with a peak of $0.934$ on MATH500-Qwen7B and a $+0.05$
+AUROC lift over a fine-tuned DeBERTa-v3 baseline.
+(iii) We provide an ablation showing that $328$ handcrafted structural features
+($n$-gram motifs, graph topology, inter-event timing, persistent homology) add
+$\le 0.005$ AUROC once strong text encoders and a multi-layer probe are
+present---a \emph{text-saturation} result that informs how minimal a useful
+structural-UQ stack can be.
+(iv) We demonstrate cross-domain transfer (MATH500 $\to$ GPQA-Diamond) with
+AUROC $0.73$, showing that the signal generalizes beyond the training domain
+when trace shapes are similar.
+
+\section{Related Work}
+
+\paragraph{Topology of reasoning.} Minegishi et al.~\cite{topology} cluster
+the hidden activations of a reasoning model and study the resulting reasoning
+\emph{graph}---cyclicity, diameter, small-world index. Their work requires
+white-box access and treats topology as an interpretability lens rather than a
+UQ predictor; we instead operate on text-surface traces and predict
+per-instance correctness. Persistent-homology work on traces and Da et
+al.~\cite{kdd2025} target \emph{explanation} or quality assessment rather than
+answer correctness. Gandhi et al.~\cite{gandhi} define the six-way cognitive
+behavior taxonomy (forward, verify, revise, restart, hesitate, conclude) we
+adopt; \cite{thoughtology} provides the empirical link between behavior
+frequencies and accuracy.
+
+\paragraph{Single-pass black-box UQ.} Verbalized confidence~\cite{lin23} and
+trace-length heuristics are known to miscalibrate. Sampling
+baselines---self-consistency~\cite{wang2022} and semantic
+entropy~\cite{kuhn23}---require $N \ge 5$--$8$ generations per query;
+LM-Polygraph~\cite{polygraph} consolidates these for benchmarking. Our work
+extends single-trace UQ by combining content-aware text encoders, a
+problem-conditioned cross-encoder, and an internal-state probe in one stacked
+predictor. Probing intermediate transformer activations as a UQ predictor is
+motivated by the empirical observation that mid-late layers hold the most
+generalization-relevant features.
+
+\section{Method}
+
+\subsection{Four complementary signals}
+
+SuperHybrid combines four views of a trace, each producing a calibrated
+probability or a small feature vector that becomes input to a stacking
+meta-learner.
+
+\textbf{(i) Text surface, $P_{\text{text}}$.} A fine-tuned DeBERTa-v3-base
+classifier on the last $512$ tokens of the trace (``trace tail''), 5-fold
+stratified cross-validation. The trace tail concentrates the model's final
+consolidation step.
+
+\textbf{(ii) Problem alignment, $P_{\text{cond}}$.} A problem-conditioned
+cross-encoder DeBERTa reading (problem $\Vert$ trace tail). Captures topic
+drift---when the trace becomes inconsistent with the original question.
+
+\textbf{(iii) Internal state, $P_{\text{probe}}$.} A small MLP probe over the
+generator's hidden states at the answer-marker position, concatenated across
+four decoder layers ($\approx 25, 50, 75, 100\%$ depth). Empirically the
+mid-late layers ($\approx 71\%$ depth) carry the cleanest signal,
+consistent with the probing literature.
+
+\textbf{(iv) Behavioral features, $F$.} A $28$-dim vector parsed using the
+six-class behavior taxonomy (forward / verify / revise / restart / hesitate /
+conclude): length and proportions, structural features
+(verification-to-forward ratio, backtrack position, transition entropy,
+behavior cycle count, longest forward run), and content-free meta-features
+(wait-density, question-mark density, repetition rate).
+
+\subsection{Stacking with leakage-safe out-of-fold predictions}
+
+Each base predictor is trained with $5$-fold stratified cross-validation and
+emits \emph{out-of-fold} (OOF) probabilities---for every item, the prediction
+comes from a fold in which that item was held out. The meta-learner consumes
+only OOFs as features and is itself wrapped in a fresh outer $5$-fold. Each
+item's stacked prediction is therefore held out \emph{twice}, eliminating the
+multi-seed re-aggregation inflation common in stacking pipelines.
+
+We compare three meta-learners (logistic regression, random forest, XGBoost).
+Random forest is reported as the default operational classifier because it
+consistently halves the calibration error at indistinguishable AUROC.
+
+\subsection{Evaluation}
+
+We report AUROC, AUPRC, expected calibration error (ECE; $10$ uniform bins),
+and accuracy at fixed coverage (selective generation). Statistical tests use
+DeLong $95\%$ confidence intervals (logit-transformed) on every pooled AUROC
+and \emph{paired} DeLong tests on every challenger-vs-baseline pair, fanned
+out across overall, model-family, dataset-family, and per-cell slices.
+
+\section{Experimental Setup}
+
+\paragraph{Generation.} We use DeepSeek-R1-Distill-Qwen-7B and
+Llama-8B~\cite{deepseekr1} (open-weight, MIT and Llama Community licenses) at
+$T = 0.6$, max $32{,}768$ tokens, on MATH500 ($500$ items), GSM8K ($1{,}319$),
+GPQA-Diamond ($198$) and ARC-Challenge ($1{,}172$). Each prompt produces
+exactly one response; we generate $6{,}378$ traces in total ($8$
+dataset$\times$model cells). Final answers are extracted from outside the
+\texttt{<think>} block and scored with exact-match (math) or letter-match
+(multiple-choice).
+
+\paragraph{Behavior parser.} Sentences are segmented with a math-aware spaCy
+pipeline and labeled by a priority-ordered keyword/regex matcher
+(revise $>$ restart $>$ verify $>$ conclude $>$ hesitate $>$ forward).
+Inter-annotator agreement against $100$ manually-labeled traces is
+Cohen's $\kappa = 0.74$.
+
+\paragraph{Hidden-state extraction.} For the probe, we save hidden states at
+the answer-marker token at four depths (layer $8, 16, 24, 32$) for the
+$32$-layer Qwen-7B and Llama-8B distillations, requiring teacher-forcing of
+the saved trace through the generator (a single forward pass).
+
+\paragraph{Baselines.} We compare against (a) length-only logistic regression
+on trace and answer length; (b) seven lexical surface cues; (c) the $28$
+handcrafted structural features alone; (d) TF-IDF unigram+bigram logistic
+regression; (e) plain DeBERTa-v3-base fine-tuned on the trace tail. (e) is the
+\emph{text-encoder bar} a structural-UQ method must clear to claim that
+structure adds value over content.
+
+\section{Results}
+
+\subsection{Pooled AUROC and calibration}
+
+Table~\ref{tab:pooled} reports pooled AUROC and ECE across the eight cells
+($n = 6{,}344$--$6{,}378$ depending on OOF coverage). $95\%$ DeLong
+confidence intervals are shown for the most relevant comparators.
+
+\begin{table}[!htbp]
+\caption{Pooled AUROC and ECE across $8$ dataset$\times$model cells.}
+\label{tab:pooled}
+\centering
+\footnotesize
+\begin{tabular}{lrlr}
+\toprule
+Method & AUROC & 95\% CI & ECE \\
+\midrule
+Length-only LR                          & 0.595 & ---             & ---   \\
+Lexical cues LR ($7$ feats)             & 0.628 & ---             & ---   \\
+Behavioral features alone ($28$)        & 0.666 & [0.652, 0.679]  & ---   \\
+TF-IDF LR ($\approx\!20$k feats)        & 0.749 & ---             & ---   \\
+Plain DeBERTa-v3, trace tail            & 0.762 & [0.751, 0.774]  & 0.090 \\
+Problem-conditioned DeBERTa             & 0.788 & [0.777, 0.799]  & 0.086 \\
+Multi-layer probe (alone)               & 0.776 & [0.764, 0.787]  & ---   \\
+Mean of three probabilities             & 0.805 & [0.792, 0.813]  & 0.082 \\
+\textbf{SuperHybrid} (LR meta-learner)  & \textbf{0.815} & \textbf{[0.804, 0.826]} & 0.080 \\
+\textbf{SuperHybrid} (RF meta-learner)  & \textbf{0.807} & \textbf{[0.797, 0.818]} & \textbf{0.042} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+SuperHybrid beats the plain DeBERTa text-encoder bar by $+0.045$ (RF) to
+$+0.053$ (LR) AUROC, paired DeLong $p < 10^{-19}$. The RF variant \emph{also}
+halves ECE from $0.090$ to $0.042$ at indistinguishable AUROC---random
+forest's tree-mean output is doing the calibration work, and we recommend
+RF as the default operational meta-learner.
+
+\subsection{Per-cell results and cross-domain transfer}
+
+Table~\ref{tab:percell-transfer} (left) shows AUROC of SuperHybrid (RF) per
+cell, strongest on math; Qwen cells are uniformly $\approx 0.06$ above
+Llama, an asymmetry that persists across every base predictor. The right
+panel reports out-of-domain AUROC when we train RF on MATH500 features and
+evaluate without retraining: MATH500 $\to$ GPQA-Diamond transfers at
+$0.73$, \emph{above} the length-only baseline ($0.65$)---the signal is
+genuinely structural, not length-driven. Transfer fails to ARC and GSM8K
+($\approx 0.51$--$0.58$), whose trace shapes (short MCQ rationales,
+grade-school arithmetic chains) differ markedly from MATH500's
+competition-mathematics traces.
+
+\begin{table}[!htbp]
+\caption{(Left) per-cell AUROC, SuperHybrid (RF). (Right) out-of-domain
+AUROC, source $=$ MATH500-Qwen7B.}
+\label{tab:percell-transfer}
+\centering
+\footnotesize
+\begin{minipage}[t]{0.46\textwidth}
+\centering
+\begin{tabular}{lrr}
+\toprule
+Dataset       & Qwen-7B         & Llama-8B \\
+\midrule
+MATH500       & \textbf{0.934}  & 0.868 \\
+GSM8K         & 0.860           & 0.766 \\
+GPQA-Diamond  & 0.768           & 0.697 \\
+ARC-Challenge & 0.733           & 0.683 \\
+\bottomrule
+\end{tabular}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.50\textwidth}
+\centering
+\begin{tabular}{lrrr}
+\toprule
+Target        & $n$  & RF              & Length-only \\
+\midrule
+GPQA-Diamond  &  198 & \textbf{0.732}  & 0.645 \\
+ARC-Challenge & 1172 & 0.577           & 0.584 \\
+GSM8K         & 1319 & 0.508           & 0.492 \\
+\bottomrule
+\end{tabular}
+\end{minipage}
+\end{table}
+
+\subsection{What does and does not contribute: text-saturation}
+
+We expanded the structural feature set from $28$ handcrafted features to
+$328$ features by adding behavior $n$-gram motifs ($231$ features), trace
+graph topology ($15$), inter-event timing ($46$), and content-free
+persistent-homology descriptors ($36$). Stacking the $328$-feature block on
+top of the four signals in Section~3.1 yields the leave-one-family-out
+deltas in Table~\ref{tab:ablation}.
+
+\begin{table}[!htbp]
+\caption{Ablation. $\Delta$AUROC of removing each family from the all-in
+stack (positive $=$ contributes, negative $=$ hurts).}
+\label{tab:ablation}
+\centering
+\footnotesize
+\begin{tabular}{lrrr}
+\toprule
+Removed family & $\Delta$LR & $\Delta$RF & $\Delta$XGB \\
+\midrule
+Text encoders (DeBERTa, conditioned, RoBERTa)    & \textbf{$+0.036$} & \textbf{$+0.043$} & \textbf{$+0.036$} \\
+Multi-layer probe                                & $+0.010$         & $+0.012$         & $+0.011$         \\
+$328$ expanded structural features               & \textbf{$-0.021$} & $-0.005$         & $+0.002$         \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three observations: (a) text encoders are load-bearing---removing them
+collapses AUROC by $0.04$, four times any other family; (b) the multi-layer
+probe contributes a uniform $+0.01$, the only consistent non-text gain;
+(c) expanding the behavioral block from $28$ to $328$ features adds zero or
+negative value once text encoders and the probe are present (LR is
+\emph{hurt} by $-0.021$). We interpret (c) as \textbf{text-saturation}: the
+lexical signatures of revision (``wait, that's wrong''), verification
+(``let me check''), and restart (``starting over'') that drive
+structural-feature counts also feed the text encoder directly. Handcrafted
+features remain useful for \emph{interpretability} and pass a length-control
+test (they beat length-only inside every length quintile,
+$\Delta$AUROC $= 0.04$--$0.08$ per bin), but add no stacking-level signal
+beyond the small probe gain.
+
+\section{Discussion}
+
+\paragraph{Calibration and the minimal recipe.} LR sits near ECE $0.080$
+and RF near $0.042$; the AUROC distinction is within paired-DeLong noise
+($\Delta \approx 0.005$), but the calibration gap is two-fold and
+structural---RF's tree-mean averaging halves it. Combined with
+text-saturation (Section~5.4), this argues for a deliberately
+\emph{minimal} stack: trace-tail encoder + problem-conditioned encoder +
+multi-layer probe + small behavioral vector, stacked with RF. The recipe is
+computationally light---one generation plus one teacher-forcing pass. At
+$70\%$ coverage on MATH500, SuperHybrid answers $\approx 95\%$ of kept
+items correctly, competitive with self-consistency $N\!=\!8$
+($\approx 92\%$) at one-eighth the cost.
+
+\paragraph{Limitations, future work, and takeaway.} The system applies
+only to open-source models and verifiable benchmarks; a persistent
+Qwen $\leftrightarrow$ Llama asymmetry of $\approx 0.06$ AUROC remains
+unexplained. Future directions include running the probe at every $k$-th
+token for mid-trace abort, distilling it into a text-only student to
+remove the white-box requirement, and extending to medical, legal, and
+code reasoning. Overall, SuperHybrid shows that calibrated single-pass UQ from one
+reasoning trace is achievable, and that the right recipe is a deliberately
+minimal text + probe + RF stack.
+
+\bibliographystyle{plainnat}
+\begin{thebibliography}{10}
+
+\bibitem{thoughtology}
+S.~Marjanovi\'{c} et~al.
+\newblock {DeepSeek-R1 Thoughtology: Let's Think About LLM Reasoning}.
+\newblock \emph{arXiv:2504.07128}, 2025.
+
+\bibitem{topology}
+H.~Minegishi et~al.
+\newblock {Topology of Reasoning: Understanding Large Reasoning Models through
+  Reasoning Graph Properties}.
+\newblock In \emph{NeurIPS}, 2025.
+
+\bibitem{kdd2025}
+L.~Da et~al.
+\newblock Understanding the Uncertainty of {LLM} Explanations: A Perspective
+  Based on Reasoning Topology.
+\newblock In \emph{KDD}, 2025.
+
+\bibitem{gandhi}
+K.~Gandhi et~al.
+\newblock Cognitive Behaviors in {LLMs}.
+\newblock 2025.
+
+\bibitem{lin23}
+S.~Lin, J.~Hilton, and O.~Evans.
+\newblock Generating with Confidence: Uncertainty Quantification for Black-Box
+  {LLMs}.
+\newblock \emph{TMLR}, 2024.
+
+\bibitem{wang2022}
+X.~Wang et~al.
+\newblock Self-Consistency Improves Chain-of-Thought Reasoning in Language
+  Models.
+\newblock In \emph{ICLR}, 2023.
+
+\bibitem{kuhn23}
+L.~Kuhn, Y.~Gal, and S.~Farquhar.
+\newblock Semantic Uncertainty: Linguistic Invariances for Uncertainty
+  Estimation in Natural Language Generation.
+\newblock In \emph{ICLR}, 2023.
+
+\bibitem{polygraph}
+R.~Vashurin et~al.
+\newblock Benchmarking Uncertainty Quantification Methods for {LLMs} with
+  {LM-Polygraph}.
+\newblock \emph{TACL}, 2025.
+
+\bibitem{deepseekr1}
+{DeepSeek-AI}.
+\newblock {DeepSeek-R1}: Incentivizing Reasoning Capability in {LLMs} via
+  Reinforcement Learning.
+\newblock \emph{arXiv:2501.12948}, 2025.
+
+\end{thebibliography}
+
+\end{document}
