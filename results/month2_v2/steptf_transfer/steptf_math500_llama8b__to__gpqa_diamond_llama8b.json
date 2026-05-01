@@ -1,0 +1,30 @@
+{
+  "source": "math500_llama8b",
+  "target": "gpqa_diamond_llama8b",
+  "diagonal": false,
+  "epochs": 15,
+  "lr": 0.0003,
+  "batch_size": 32,
+  "seed": 42,
+  "n_source_train": 500,
+  "n_target_eval": 198,
+  "source_pos_rate": 0.608,
+  "target_pos_rate": 0.40404040404040403,
+  "metrics": {
+    "method": "math500_llama8b__to__gpqa_diamond_llama8b",
+    "auroc": 0.6077330508474577,
+    "auprc": 0.5264382030822834,
+    "ece": 0.2255179848183285,
+    "accuracy": 0.6161616161616161,
+    "f1": 0.3333333333333333,
+    "accuracy_at_80": 0.43670886075949367,
+    "accuracy_at_90": 0.4157303370786517,
+    "prr": 0.2524848174491213,
+    "aurc_method": 0.5012592717761862,
+    "aurc_random": 0.5929496990103049,
+    "aurc_oracle": 0.2297974581727132,
+    "n_samples": 198,
+    "n_correct": 80,
+    "base_accuracy": 0.40404040404040403
+  }
+}

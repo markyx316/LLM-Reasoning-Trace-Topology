@@ -31,8 +31,7 @@ from tqdm import tqdm
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.features.recurrence_features import load_embedder
-from src.parsing.rule_based_parser import parse_trace
-from src.parsing.taxonomy import BehaviorType
+from src.parsing.rule_based_parser import BehaviorType, parse_trace
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +42,14 @@ DATASETS = [
     "arc_challenge_qwen7b", "arc_challenge_llama8b",
 ]
 
-# Stable ordinal mapping: 0=PAD, 1..7 = behavior types
+# Stable ordinal mapping: 0=PAD, 1..6 = behavior types (F, V, X, R, H, C).
+# Source enum is rule_based_parser.BehaviorType (the 6-class taxonomy actually
+# emitted by parse_trace). Importing from src.parsing.taxonomy here would
+# silently map every step to PAD because that legacy enum has different members
+# (BACKTRACK/SUBGOAL instead of REVISE).
 BEHAVIOR_VOCAB = {bt: i + 1 for i, bt in enumerate(BehaviorType)}
 PAD_TYPE = 0
-N_TYPES = len(BehaviorType) + 1  # 8 with PAD
+N_TYPES = len(BehaviorType) + 1  # 7 with PAD (6 behaviors + PAD)
 
 
 def process_dataset(

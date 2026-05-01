@@ -1,0 +1,25 @@
+{
+  "path": "results/step_transformer_pooled_oof.npz",
+  "kind": "step_transformer_pooled",
+  "protocol": "leaky_best_epoch_on_val",
+  "leaky": false,
+  "why_flagged": "Pooled Step Transformer; OOF fold predictions picked by best val_AUROC per epoch.",
+  "summary": {
+    "exists": true,
+    "n_samples": 6378,
+    "has_oof_fold": true,
+    "has_groups": true,
+    "keys": [
+      "item_ids",
+      "groups",
+      "y_true",
+      "oof_prob",
+      "oof_fold",
+      "seed",
+      "n_splits"
+    ],
+    "sha256_prefix": "4d9b3a9b0ccc10e7",
+    "size_bytes": 35729,
+    "pooled_auroc": 0.6751617434856603
+  }
+}

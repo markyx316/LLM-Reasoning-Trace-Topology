@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 # Must match scripts/build_step_embeddings.py
 PAD_TYPE = 0
-N_TYPES = 8       # 7 BehaviorType + PAD
+N_TYPES = 7       # 6 BehaviorType (F, V, X, R, H, C) + PAD
 EMB_DIM = 384     # MiniLM
 
 
@@ -182,20 +182,26 @@ def train_one_fold(
     epochs: int, batch_size: int, lr: float, device: str,
     pos_weight: float = 1.0,
     log_prefix: str = "",
+    emb_dim: int = EMB_DIM,
 ) -> tuple[np.ndarray, np.ndarray]:
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
                               collate_fn=collate, num_workers=2)
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False,
                             collate_fn=collate, num_workers=2)
 
-    model = StepTransformer().to(device)
+    model = StepTransformer(emb_dim=emb_dim).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     bce = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([pos_weight], device=device))
 
-    best_auroc = -1.0
-    best_state = None
-    best_probs = None
-    best_labels = None
+    # ----- LEAKAGE-SAFE OOF PROTOCOL -----
+    # The OOF probability we return becomes an input to downstream stackers
+    # (hybrid_route_ab, tune_hybrid). Selecting the "best" epoch by
+    # val_AUROC on the held-out fold is test-set model selection — it
+    # inflates the reported OOF AUROC and makes the probs not reusable as
+    # leakage-free stacker inputs. Fix: return LAST epoch's predictions,
+    # period. Per-epoch val metrics are still logged for monitoring only.
+    last_probs = None
+    last_labels = None
 
     for ep in range(1, epochs + 1):
         model.train()
@@ -229,14 +235,12 @@ def train_one_fold(
         m = evaluate(ys, ps, name=f"epoch_{ep}")
         logger.info(f"  {log_prefix} ep {ep:02d}  loss={ep_loss:.4f}  "
                     f"val_AUROC={m['auroc']:.3f}  val_AUPRC={m['auprc']:.3f}  "
-                    f"val_ECE={m['ece']:.3f}")
-        if m["auroc"] > best_auroc:
-            best_auroc = m["auroc"]
-            best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
-            best_probs = ps.copy()
-            best_labels = ys.copy()
+                    f"val_ECE={m['ece']:.3f}  [logged for monitoring only]")
+        # Always overwrite — we return the LAST epoch's predictions
+        last_probs = ps.copy()
+        last_labels = ys.copy()
 
-    return best_labels, best_probs
+    return last_labels, last_probs
 
 
 # =============================================================================
@@ -252,6 +256,15 @@ def run_cv(npz_paths: list[str], output_path: str,
     item_ids = data["item_ids"]
     logger.info(f"Loaded {len(y)} items from {len(npz_paths)} files. "
                 f"Pos rate: {y.mean():.3f}")
+
+    # Auto-detect embedding dimension from the first non-empty item so the
+    # script works with both MiniLM (384-d) and bge-base (768-d) .npz files.
+    emb_dim = EMB_DIM
+    for e in embs:
+        if e is not None and len(e) > 0:
+            emb_dim = int(e.shape[1])
+            break
+    logger.info(f"Auto-detected embedding dim: {emb_dim}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Device: {device}")
@@ -285,7 +298,7 @@ def run_cv(npz_paths: list[str], output_path: str,
         labels, probs = train_one_fold(
             train_ds, val_ds, epochs=epochs, batch_size=batch_size,
             lr=lr, device=device, pos_weight=pos_weight,
-            log_prefix=f"fold{fold + 1}",
+            log_prefix=f"fold{fold + 1}", emb_dim=emb_dim,
         )
         oof_prob[te_idx] = probs
         oof_fold[te_idx] = fold

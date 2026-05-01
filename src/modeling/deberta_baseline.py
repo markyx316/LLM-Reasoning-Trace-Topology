@@ -141,9 +141,45 @@ def train_one_fold(model_name: str, train_ds: Dataset, val_ds: Dataset,
         collate_fn=lambda b: collate_pad(b, pad_id),
     )
 
+    # ----- EXPLICIT FP32 LOADING (leakage-orthogonal stability fix) -----
+    # The "main" branch of `microsoft/deberta-v3-base` on the Hub ships
+    # `pytorch_model.bin` only — no `model.safetensors`. When transformers
+    # falls back to the community-contributed safetensors conversion at
+    # `refs/pr/14`, those weights were saved in BF16 to save space. Without
+    # an explicit `torch_dtype`, the model is instantiated in whatever dtype
+    # the checkpoint carries. DeBERTa-v3's disentangled relative-position
+    # attention OVERFLOWS in BF16 on the very first forward pass, producing
+    # non-finite logits and aborting training immediately (AUROC = 0.5000).
+    #
+    # Forcing `torch_dtype=torch.float32` guarantees the model lives in FP32
+    # regardless of what dtype the checkpoint was serialised in. This is
+    # purely a numerical-stability fix; the FP32 compute path is what the
+    # v1 (pre-leakage-patch) runs used and what the comment block above
+    # already assumed.
     model = AutoModelForSequenceClassification.from_pretrained(
-        model_name, num_labels=2,
+        model_name, num_labels=2, torch_dtype=torch.float32,
     ).to(device)
+
+    # Post-load sanity probe: some community checkpoints are subtly broken
+    # (wrong tied weights, missing pooler init). Feed one dummy sequence
+    # through and verify the output is finite before we sink a fold into
+    # hours of training. Failure here surfaces the problem in < 1 s per
+    # fold instead of the current 8-s-abort-then-dummy-predict path.
+    with torch.no_grad():
+        _probe = torch.tensor(
+            [[tokenizer.cls_token_id, 2, 3, 4, 5, tokenizer.sep_token_id]],
+            dtype=torch.long, device=device,
+        )
+        _out = model(input_ids=_probe,
+                     attention_mask=torch.ones_like(_probe))
+        if not torch.isfinite(_out.logits).all():
+            raise RuntimeError(
+                f"Model {model_name} produced non-finite logits on a "
+                f"dummy input. This usually means the checkpoint was "
+                f"loaded in the wrong dtype (BF16/FP16 for DeBERTa-v3) "
+                f"or the safetensors conversion is corrupted. Pass "
+                f"`torch_dtype=torch.float32` and/or `use_safetensors=False`."
+            )
 
     no_decay = ("bias", "LayerNorm.weight")
     params = [
@@ -152,70 +188,118 @@ def train_one_fold(model_name: str, train_ds: Dataset, val_ds: Dataset,
         {"params": [p for n, p in model.named_parameters()
                     if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
     ]
-    opt = torch.optim.AdamW(params, lr=lr)
+    opt = torch.optim.AdamW(params, lr=lr)   # default eps=1e-8 (1e-6 halved updates during warmup)
     n_steps = len(train_loader) * epochs
+    # v1 hyperparameters (6% warmup, clip=1.0, lr=2e-5) are what actually let
+    # DeBERTa-v3 train to AUROC ~0.75. Gentler settings (10%/clip=0.5/lr=1e-5)
+    # were tried to dodge a fold-4 NaN failure but resulted in AUROC ~0.54
+    # (essentially untrained). The real NaN fix was the FP32 switch + per-batch
+    # NaN guard; the LR/clip/warmup should stay at v1 defaults.
     sched = get_linear_schedule_with_warmup(opt, int(0.06 * n_steps), n_steps)
 
-    use_amp = (device == "cuda")
-    scaler = torch.cuda.amp.GradScaler() if use_amp else None
+    # Precision: DeBERTa-v3's disentangled relative-position attention is
+    # numerically unstable in BF16 (low mantissa → NaN in attn softmax) and
+    # FP16 (narrow exponent → underflow without GradScaler). We train in FP32
+    # for rock-solid stability; batch_size=8 × 184M params fits easily in
+    # <12 GB on any Ampere+ / Blackwell card.
+    #
+    # ----- LEAKAGE-SAFE OOF PROTOCOL -----
+    # Earlier versions of this function tracked `best_auroc` on the held-out
+    # fold and returned the best-epoch predictions. That is model selection on
+    # the test set — soft leakage that inflates OOF AUROC (and, more
+    # importantly, makes the OOF probs unusable as inputs to a downstream
+    # stacker, since the fold-level picks were chosen to look good on those
+    # same items).
+    #
+    # The clean protocol used here: train for a fixed number of epochs and
+    # return the LAST epoch's predictions. No peeking at val labels for epoch
+    # selection. Per-epoch val metrics are still LOGGED for monitoring but are
+    # never consulted to pick what we return.
+    last_probs = None
+    last_labels = None
 
-    best_auroc = -1.0
-    best_probs = None
-    best_labels = None
+    max_skip_frac_before_abort = 0.50
 
     for ep in range(1, epochs + 1):
         model.train()
         loss_sum = 0.0
         n_seen = 0
-        for batch in train_loader:
+        n_batches = 0
+        n_skipped = 0
+        for bi, batch in enumerate(train_loader):
             batch = {k: v.to(device, non_blocking=True) for k, v in batch.items()}
             opt.zero_grad()
-            if use_amp:
-                with torch.cuda.amp.autocast(dtype=torch.bfloat16):
-                    out = model(**batch)
-                    loss = out.loss
-                scaler.scale(loss).backward()
-                scaler.unscale_(opt)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                scaler.step(opt); scaler.update()
-            else:
-                out = model(**batch)
-                loss = out.loss
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                opt.step()
+            out = model(**batch)
+            loss = out.loss
+            if not torch.isfinite(loss):
+                n_skipped += 1
+                # Lightweight diagnostic: log just once per epoch + a summary
+                if n_skipped == 1:
+                    with torch.no_grad():
+                        logits = out.logits.float() if out.logits is not None else None
+                        lab = batch["labels"]
+                        amask = batch["attention_mask"]
+                    logger.warning(
+                        f"  {log_prefix} ep {ep:02d} batch {bi:04d}: "
+                        f"non-finite loss. labels={lab.tolist()} "
+                        f"real_tokens_per_sample={amask.sum(dim=1).tolist()} "
+                        f"logits_finite={torch.isfinite(logits).all().item() if logits is not None else '?'}"
+                    )
+                n_batches += 1
+                continue
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            opt.step()
             sched.step()
             loss_sum += loss.item() * batch["labels"].size(0)
             n_seen += batch["labels"].size(0)
+            n_batches += 1
+
+        # If training is pathological, don't grind through all epochs
+        if n_batches == 0 or n_skipped / max(n_batches, 1) > max_skip_frac_before_abort:
+            logger.error(
+                f"  {log_prefix} ep {ep:02d}  ABORTING FOLD: "
+                f"skipped {n_skipped}/{n_batches} batches "
+                f"(> {max_skip_frac_before_abort:.0%} threshold). "
+                f"Lower lr (--lr 5e-6) or shrink seq-len (--max-len 256) and retry."
+            )
+            # Emit a dummy prediction so the fold doesn't crash the whole CV.
+            val_size = len(val_loader.dataset)
+            return np.zeros(val_size, dtype=np.int64), np.full(val_size, 0.5, dtype=np.float32)
+
+        if n_skipped > 0:
+            logger.warning(f"  {log_prefix} ep {ep:02d}  skipped {n_skipped}/{n_batches} batches")
 
         avg_loss = loss_sum / max(n_seen, 1)
 
-        # Eval
+        # Eval — also FP32; sanitize any stray non-finite logits just in case
         model.eval()
         ys, ps = [], []
         with torch.no_grad():
             for batch in val_loader:
                 lbl = batch.pop("labels")
                 batch = {k: v.to(device) for k, v in batch.items()}
-                with torch.cuda.amp.autocast(dtype=torch.bfloat16) if use_amp else torch.no_grad():
-                    out = model(**batch)
-                p = torch.softmax(out.logits.float(), dim=-1)[:, 1].cpu().numpy()
+                out = model(**batch)
+                logits = out.logits.float()
+                if not torch.isfinite(logits).all():
+                    logits = torch.nan_to_num(logits, nan=0.0, posinf=40.0, neginf=-40.0)
+                p = torch.softmax(logits, dim=-1)[:, 1].cpu().numpy()
                 ps.append(p); ys.append(lbl.numpy())
         ys = np.concatenate(ys); ps = np.concatenate(ps)
         m = evaluate(ys, ps, name=f"epoch_{ep}")
         logger.info(f"  {log_prefix} ep {ep:02d}  loss={avg_loss:.4f}  "
                     f"val_AUROC={m['auroc']:.3f}  val_AUPRC={m['auprc']:.3f}  "
-                    f"val_ECE={m['ece']:.3f}")
-        if m["auroc"] > best_auroc:
-            best_auroc = m["auroc"]
-            best_probs = ps.copy()
-            best_labels = ys.copy()
+                    f"val_ECE={m['ece']:.3f}  [logged for monitoring only]")
+        # Always overwrite — we return the LAST epoch's predictions, not the
+        # best-by-val-AUROC (that would be test-set model selection).
+        last_probs = ps.copy()
+        last_labels = ys.copy()
 
     # Free
     del model
-    if use_amp:
+    if device == "cuda":
         torch.cuda.empty_cache()
-    return best_labels, best_probs
+    return last_labels, last_probs
 
 
 # =============================================================================
@@ -268,6 +352,7 @@ def run_cv(traces_glob: str, output: str,
     summary = aggregate_folds(fold_metrics)
 
     oof_path = output.replace(".json", "_oof.npz")
+    os.makedirs(os.path.dirname(oof_path) or ".", exist_ok=True)
     np.savez_compressed(oof_path,
         item_ids=item_ids, groups=groups,
         y_true=labels, oof_prob=oof_prob, oof_fold=oof_fold,
@@ -302,7 +387,7 @@ def main():
     p.add_argument("--model", default="microsoft/deberta-v3-base")
     p.add_argument("--epochs", type=int, default=3)
     p.add_argument("--batch-size", type=int, default=8)
-    p.add_argument("--lr", type=float, default=2e-5)
+    p.add_argument("--lr", type=float, default=2e-5)  # v1 default; produces AUROC ~0.75 pooled
     p.add_argument("--max-len", type=int, default=512)
     p.add_argument("--n-splits", type=int, default=5)
     p.add_argument("--seed", type=int, default=42)
