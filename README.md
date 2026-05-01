@@ -17,7 +17,7 @@ ARC-Challenge) and 2 reasoning-distilled models (DeepSeek-R1-Distill-Qwen-7B and
 Llama-8B), SuperHybrid reaches **pooled AUROC 0.815 (LR meta-learner) /
 0.807 (RF) with ECE 0.042**, beating a fine-tuned DeBERTa-v3 read of the
 trace by **+0.05 AUROC** (paired DeLong p < 10⁻¹⁹) and halving its calibration
-error. Peak per-cell: **0.934** on MATH500-Qwen7B.
+error. Peak per-cell: **0.929** on MATH500-Qwen7B.
 
 | Method                         | AUROC | ECE   |
 |--------------------------------|------:|------:|

@@ -223,7 +223,7 @@ Pooled AUROC (n = 6,344-6,378 across the 8 dataset x model cells):
 | **SuperHybrid (LR)**            | **0.815 +/- 0.005**     |
 | **SuperHybrid (RF)** (ECE 0.042) | **0.807 +/- 0.005**    |
 
-Per-cell peak: **0.934 [0.910, 0.957]** on MATH500-Qwen7B.
+Per-cell peak: **0.929** on MATH500-Qwen7B.
 
 If the numbers you see deviate from these by more than 0.01 AUROC, the most
 common cause is a stale OOF — re-run step 4 against the OOFs in
