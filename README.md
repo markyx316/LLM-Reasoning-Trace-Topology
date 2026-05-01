@@ -1,127 +1,184 @@
-# Reasoning Trace Topology as Calibration-Free Uncertainty Quantification
+# SuperHybrid: Single-Pass Black-Box Uncertainty Quantification for LLM Reasoning Traces
 
-**Core insight:** A single reasoning trace from a reasoning LLM already encodes structural signals about whether the model is likely to be wrong — if we know how to read it.
+Calibration-free uncertainty quantification (UQ) for large reasoning models. Given a
+**single** reasoning trace and the generator's hidden state at one position,
+**SuperHybrid** predicts whether the model's final answer is correct — at one
+generation cost, with no logits, no sampling, and no model-side self-report.
 
-This project extracts topological features from LLM reasoning traces (backtracking patterns, verification frequency, transition entropy, etc.) and uses them to predict answer correctness, providing a **single-generation, text-surface, black-box** uncertainty quantification method.
+📄 **Final report:** [`reports/FINAL_REPORT.pdf`](reports/FINAL_REPORT.pdf)
+🔁 **Reproduction walkthrough:** [`REPRODUCING.md`](REPRODUCING.md)
 
-## Quick Start
+---
+
+## Headline result
+
+Across **6,378 traces** spanning 4 benchmarks (MATH500, GSM8K, GPQA-Diamond,
+ARC-Challenge) and 2 reasoning-distilled models (DeepSeek-R1-Distill-Qwen-7B and
+Llama-8B), SuperHybrid reaches **pooled AUROC 0.815 (LR meta-learner) /
+0.807 (RF) with ECE 0.042**, beating a fine-tuned DeBERTa-v3 read of the
+trace by **+0.05 AUROC** (paired DeLong p < 10⁻¹⁹) and halving its calibration
+error. Peak per-cell: **0.934** on MATH500-Qwen7B.
+
+| Method                         | AUROC | ECE   |
+|--------------------------------|------:|------:|
+| Length-only LR                 | 0.595 | —     |
+| Plain DeBERTa-v3 (trace tail)  | 0.762 | 0.090 |
+| Problem-conditioned DeBERTa    | 0.788 | 0.086 |
+| Multi-layer hidden-state probe | 0.776 | —     |
+| **SuperHybrid (LR)**           | **0.815** | 0.080 |
+| **SuperHybrid (RF)**           | **0.807** | **0.042** |
+
+Full numbers, ablations, and cross-domain transfer in
+[`reports/FINAL_REPORT.pdf`](reports/FINAL_REPORT.pdf).
+
+---
+
+## How SuperHybrid works (one paragraph)
+
+SuperHybrid is a **stacking pipeline** over four complementary views of a trace:
+(i) a fine-tuned DeBERTa-v3 read of the trace tail, (ii) a problem-conditioned
+cross-encoder DeBERTa, (iii) a small MLP probe over the generator's hidden
+states at the answer-marker token, concatenated across four decoder layers,
+and (iv) a 28-dim behavioral-feature vector parsed from the trace text using
+a six-class cognitive behavior taxonomy
+(forward / verify / revise / restart / hesitate / conclude). The four base
+predictors emit out-of-fold (OOF) probabilities; a meta-learner
+(logistic regression / random forest / XGBoost) fits on those OOFs in a fresh
+outer 5-fold CV — making the stacked prediction **leakage-safe at the item
+level**. Random forest is the recommended terminal classifier because it
+halves the calibration error at indistinguishable AUROC.
+
+---
+
+## Repository layout
+
+```
+.
+├── reports/
+│   ├── FINAL_REPORT.pdf         <- compiled paper (4 pages body + 3 appendices)
+│   ├── FINAL_REPORT.tex         <- LaTeX source (NeurIPS 2025 template)
+│   ├── neurips_2025.sty         <- style file for the template
+│   ├── route_ab/                <- per-group DeLong CIs, ablation tables
+│   └── month3/                  <- experiment-by-experiment summaries
+├── src/
+│   ├── analysis/                <- DeLong CI and paired-DeLong machinery
+│   ├── baselines/               <- Baselines A-D (length, lexical, handcrafted, TF-IDF)
+│   ├── features/                <- Behavioral, recurrence, n-gram, graph, timing,
+│   │                               persistent-homology, shapelet feature extractors
+│   ├── generation/              <- Trace generation + answer scoring
+│   ├── modeling/                <- Probes, Step Transformer, GNN, hybrid stackers
+│   └── parsing/                 <- Sentence segmentation + behavior taxonomy
+├── scripts/
+│   ├── run_*.sh                 <- Convenience drivers (generation, parsing, training)
+│   ├── sbatch_*.sh              <- SLURM job scripts for the HPC steps
+│   └── phase3/                  <- Phase 3 experiment scripts (probes, OOF stacking)
+├── data/
+│   ├── traces/                  <- Raw generated traces (one .jsonl per dataset x model)
+│   ├── parsed/                  <- Parsed behavior-episode sequences
+│   ├── features/                <- All feature CSVs (28-feat behavioral + extended)
+│   ├── hybrid_table.parquet     <- Joined feature matrix (6,344 x 366) for tuning
+│   └── optuna_hybrid_v1_clean.db <- Optuna study log (XGBoost stacker tuning)
+├── results/                     <- Per-experiment OOFs, paired-DeLong tests, summaries
+├── README.md                    <- This file
+├── REPRODUCING.md               <- Step-by-step walkthrough to reproduce headline numbers
+├── PLAN_ROUTE_AB.md             <- Developer notes: design of the Route-A/B feature blocks
+├── HPC_WALKTHROUGH_ROUTE_AB.md  <- Developer notes: HPC submission protocol
+├── HPC_HYBRID_TUNING.md         <- Developer notes: Optuna tuning protocol
+├── RESEARCH_GUIDE.md            <- Developer notes: reproduction tips for the project
+└── research_proposal.md         <- Original (pre-research) proposal; preserved for reference
+```
+
+The four root `*.md` files other than `README.md` and `REPRODUCING.md` are
+**developer notes** preserved for archival; the canonical entry points are
+this README and `REPRODUCING.md`.
+
+---
+
+## Install
+
+Tested on Ubuntu 22.04 / WSL2 with Python 3.11.
 
 ```bash
-# 1. Parse traces into behavior episodes
-PYTHONPATH=. python src/parsing/rule_based_parser.py \
-    --input data/traces/math500_qwen7b_traces.jsonl \
-    --output data/parsed/math500_qwen7b_parsed.jsonl
+# 1. Clone
+git clone <this repo URL>
+cd LLM-Reasoning-Trace-Topology
 
-# 2. Extract features
-PYTHONPATH=. python src/features/feature_extractor.py \
-    --traces data/traces/math500_qwen7b_traces.jsonl \
-    --output data/features/math500_qwen7b_features.csv
+# 2. Conda environment (recommended)
+conda create -n superhybrid python=3.11
+conda activate superhybrid
 
-# 3. Run baselines
-PYTHONPATH=. python src/baselines/baseline_a_length_only.py --all
-PYTHONPATH=. python src/baselines/baseline_b_lexical.py --all
-PYTHONPATH=. python src/baselines/baseline_c_handcrafted.py --all
-PYTHONPATH=. python src/baselines/baseline_d_text_encoder.py --all
+# 3. Python deps
+pip install -r requirements.txt
+python -m spacy download en_core_web_sm
+
+# 4. PyTorch (install matching your CUDA; CPU-only is fine for stacking only)
+#    Example for CUDA 12.1:
+pip install torch==2.2.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# 5. Set the repo root on PYTHONPATH (one-shot per shell)
+export PYTHONPATH=$PWD
 ```
 
-## Architecture
+A GPU is required for **trace generation** and **DeBERTa / probe training** but
+not for stacking, baselines, or the statistical analyses.
 
-```
-src/
-├── generation/
-│   ├── scoring.py              # Math equivalence, MC matching, GSM8K extraction
-│   ├── dataset_loader.py       # Load MATH500, GSM8K, GPQA, ARC-Challenge
-│   └── generate_traces.py      # Trace generation (HF Transformers + vLLM)
-├── parsing/
-│   ├── rule_based_parser.py    # 6-class rule-based behavior parser (NEW)
-│   ├── taxonomy.py             # Legacy: 7 cognitive behavior types, 50+ patterns
-│   ├── sentence_segmenter.py   # Math-aware sentence boundary detection
-│   ├── behavior_classifier.py  # Legacy: full trace → cognitive episode pipeline
-│   └── parser_evaluation.py    # Annotation templates + Cohen's Kappa
-├── features/
-│   ├── feature_extractor.py    # 25 features across 3 groups (NEW)
-│   └── feature_pipeline.py     # Legacy: 23-feature pipeline
-├── baselines/
-│   ├── baseline_a_length_only.py   # Baseline A: trace length + answer length
-│   ├── baseline_b_lexical.py       # Baseline B: 7 lexical surface cues
-│   ├── baseline_c_handcrafted.py   # Baseline C: all 23 handcrafted features
-│   └── baseline_d_text_encoder.py  # Baseline D: TF-IDF text encoder
-└── modeling/
-    └── train_and_evaluate.py   # CV training, metrics, ablation, transfer
+For trace generation via the DeepSeek API instead of a local GPU:
+```bash
+cp .env.example .env
+# Then put your DEEPSEEK_API_KEY in .env
 ```
 
-## Behavior Taxonomy (6 classes)
+---
 
-The rule-based parser classifies each sentence in a reasoning trace into one of six cognitive behavior types:
+## Quick start: 5-minute pilot
 
-| Code | Type | Description | Example signal |
-|------|------|-------------|----------------|
-| **F** | Forward | Declarative reasoning, computation | "So the answer is...", "Therefore..." |
-| **V** | Verify | Checking, confirming, double-checking | "Let me verify...", "Checking: ...", "✓" |
-| **X** | Revise | Correction, error acknowledgment | "Wait, that's wrong", "I made an error" |
-| **R** | Restart | Full restart, fresh attempt | "Let me start over", "Starting fresh" |
-| **H** | Hesitate | Uncertainty, hedging | "Hmm...", "I'm not sure", "Wait..." |
-| **C** | Conclude | Final answer delivery | "The answer is", "\\boxed{}" |
-
-Priority order (when multiple patterns match): X > R > V > C > H > F
-
-## Feature Groups (25 features)
-
-| Group | Count | Features |
-|-------|-------|----------|
-| **Length & Proportion** | 8 | `total_tokens`, `total_episodes`, `prop_forward`, `prop_verify`, `prop_revise`, `prop_restart`, `prop_hesitate`, `prop_conclude` |
-| **Structural / Topological** | 10 | `revise_count`, `verify_count`, `restart_count`, `vf_ratio`, `revise_position_mean`, `first_conclude_pos`, `v_clustering`, `max_forward_run`, `transition_entropy`, `cycle_count` |
-| **Content-Free Meta** | 7 | `wait_density`, `question_mark_density`, `negation_density`, `repetition_rate_4gram`, `maybe_density`, `verify_density`, `actually_density` |
-
-Key: all meta features are normalized per token (densities, not raw counts). `transition_entropy` is a frequency-weighted Shannon entropy of the behavior bigram transition matrix. `cycle_count` uses Jaccard word-overlap (≥ 0.30) to detect semantically repeated episodes.
-
-## Baselines
-
-| Baseline | Features | Classifier | AUROC range |
-|----------|----------|------------|-------------|
-| **A — Length Only** | 2: `trace_token_count`, `answer_length` | LR | 0.52 – 0.70 |
-| **B — Lexical Cues** | 7: wait, maybe, verify, actually, negation, `?`, repetition | LR | 0.52 – 0.69 |
-| **C — Handcrafted** | 23: full feature CSV | LR + RF + XGBoost | 0.54 – 0.78 |
-| **D — TF-IDF Encoder** | ~20k unigram+bigram TF-IDF | LR | 0.60 – 0.79 |
-| **Ours (structural)** | 25 from 6-class parser | LR / RF / XGBoost | TBD |
-
-Note: Baseline D's advantage over A–C comes from domain vocabulary correlation (content leakage), not structural signals — making it a content-based upper bound, not a fair structural comparison.
-
-All baselines use 5-fold stratified CV. Metrics: AUROC, AUPRC, ECE, Acc@80, Acc@90, AU-Acc-Cov.
-
-## Datasets & Models
-
-| Dataset | Model | Split | Task type |
-|---------|-------|-------|-----------|
-| MATH500 | Qwen2.5-7B-Instruct | test | Math (open-ended) |
-| MATH500 | Llama-3.1-8B-Instruct | test | Math (open-ended) |
-| GSM8K | Qwen2.5-7B-Instruct | test | Math (open-ended) |
-| GSM8K | Llama-3.1-8B-Instruct | test | Math (open-ended) |
-| GPQA Diamond | Qwen2.5-7B-Instruct | test | Science MCQ |
-| GPQA Diamond | Llama-3.1-8B-Instruct | test | Science MCQ |
-| ARC-Challenge | Qwen2.5-7B-Instruct | test | Science MCQ |
-| ARC-Challenge | Llama-3.1-8B-Instruct | test | Science MCQ |
-
-## Test Suite
-
-Each module contains a self-test suite runnable directly:
+Verify the pipeline end-to-end on synthetic data (no GPU needed):
 
 ```bash
-PYTHONPATH=. python src/generation/scoring.py              # 27 tests
-PYTHONPATH=. python src/parsing/sentence_segmenter.py      # 10 tests
-PYTHONPATH=. python src/parsing/rule_based_parser.py       # 30 unit + 1 integration
-PYTHONPATH=. python src/features/feature_extractor.py      # 40 tests
-PYTHONPATH=. python src/modeling/train_and_evaluate.py     # 18 tests
+PYTHONPATH=. python scripts/validate_pipeline.py
 ```
 
-## Compute Requirements
+This runs scoring -> segmentation -> parsing -> feature extraction -> JSONL
+round-trip on synthetic traces and prints a green checklist if the codebase
+is wired up correctly.
 
-| Task | GPU Hours | Notes |
-|------|-----------|-------|
-| Primary traces (3,200 items) | 8–12 hrs | 1× A100 or 2× A6000 |
-| Feature extraction + training | < 1 hr | CPU only |
-| All 4 baselines (--all) | < 30 min | CPU only |
+To reproduce the headline numbers, follow [`REPRODUCING.md`](REPRODUCING.md).
+
+---
+
+## Data and model availability
+
+- **Raw traces** for the 8 dataset x model cells (~6,378 traces) are
+  regenerable from `scripts/run_generation.sh`. We do not commit them since
+  they are easily regenerated; the **parsed episodes**, all **feature CSVs**,
+  all **OOF probability arrays**, and the **joined hybrid table** are committed
+  under `data/` and `results/` for direct reproduction of the meta-learning
+  results.
+- **Step embeddings**, **graph artifacts**, and **hidden-state extractions**
+  are large binaries (each up to ~165 MB) excluded from git via `.gitignore`.
+  They are regeneratable with the corresponding `scripts/build_*.py` script.
+  See `REPRODUCING.md` for details.
+
+---
+
+## Citing
+
+If you build on this codebase, please cite the final report
+(`reports/FINAL_REPORT.pdf`):
+
+```
+@misc{superhybrid2026,
+  author = {Chen, Peng and Lin, Lixing and Ma, Youxuan},
+  title  = {SuperHybrid: Single-Pass Black-Box Uncertainty Quantification for
+            LLM Reasoning Traces},
+  year   = {2026},
+  note   = {Yale University, CPSC 4770/5770}
+}
+```
+
+---
 
 ## License
 
-Research code. Model weights are under their respective licenses (Qwen: Apache 2.0, Llama 3.1: Meta Community License).
+Research code released for academic use. Model weights are under their
+respective licenses (DeepSeek-R1: MIT; Llama 3.1: Meta Community License).
