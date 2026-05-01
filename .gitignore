@@ -232,3 +232,19 @@ data/*.zip
 err.txt
 out.txt
 stage_*.txt
+
+# LaTeX build artifacts (FINAL_REPORT.tex regenerates these on every compile)
+*.aux
+*.out
+# *.log already ignored above
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+*.toc
+*.lof
+*.lot
+*.bbl
+*.blg
+
+# In-place developer backup files
+*.bak_*

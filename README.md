@@ -38,9 +38,10 @@ Full numbers, ablations, and cross-domain transfer in
 SuperHybrid is a **stacking pipeline** over four complementary views of a trace:
 (i) a fine-tuned DeBERTa-v3 read of the trace tail, (ii) a problem-conditioned
 cross-encoder DeBERTa, (iii) a small MLP probe over the generator's hidden
-states at the answer-marker token, concatenated across four decoder layers,
-and (iv) a 28-dim behavioral-feature vector parsed from the trace text using
-a six-class cognitive behavior taxonomy
+states, concatenated across **five** decoder layers (relative depths
+≈ 14, 29, 43, 57, 71%) at **two** token positions (the answer-marker and
+the last-token of the trace), and (iv) a 28-dim behavioral-feature vector
+parsed from the trace text using a six-class cognitive behavior taxonomy
 (forward / verify / revise / restart / hesitate / conclude). The four base
 predictors emit out-of-fold (OOF) probabilities; a meta-learner
 (logistic regression / random forest / XGBoost) fits on those OOFs in a fresh

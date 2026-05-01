@@ -2,7 +2,7 @@
 
 This walkthrough takes you from a fresh clone to the **AUROC 0.815 / ECE 0.042**
 SuperHybrid pooled result reported in `reports/FINAL_REPORT.pdf`. Steps 1-3
-require GPUs (we used Yale's Grace HPC cluster with NVIDIA A100/H100); steps
+require GPUs (we used Yale's Grace HPC cluster with NVIDIA B200/H200); steps
 4-6 are CPU-only and fast.
 
 If you are reviewing the project and only want to reproduce the **headline
@@ -29,7 +29,8 @@ For trace generation you also need either:
   needed)
 
 For DeBERTa fine-tuning and hidden-state probing you need a GPU with at
-least 24 GB of memory (A100/H100 used in our experiments).
+least 24 GB of memory (B200/H200 from Yale Grace's `gpu_b200` and
+`gpu_h200` partitions used in our experiments).
 
 ---
 
@@ -59,18 +60,18 @@ Sanity check after generation:
 ## 2. Behavior parsing + handcrafted features (CPU; ~5-10 min)
 
 ```bash
-# Parse traces into 6-class behavior episodes
+# Parse traces into 6-class behavior episodes AND extract feature CSVs in one shot
 ./scripts/run_parsing.sh all
-
-# Extract the 28-dim behavioral feature vector per trace
-PYTHONPATH=. python src/features/feature_extractor.py \
-    --traces-glob "data/traces/*_traces.jsonl" \
-    --output-dir  data/features/
 ```
 
-Outputs:
+This script invokes the parser and the feature pipeline internally and
+writes:
+
 - `data/parsed/{dataset}_{model}_parsed.jsonl` — episode sequences
 - `data/features/{dataset}_{model}_features.csv` — 28-dim feature CSVs
+
+(Module self-tests are runnable with `PYTHONPATH=. python src/features/feature_extractor.py`,
+which also prints a feature vector for a sample trace.)
 
 ---
 
@@ -83,48 +84,52 @@ probabilities are saved to `results/` as `.npz` files for the meta-learner.
 
 ```bash
 sbatch scripts/sbatch_phase0_phase1_hpc.sh        # HPC SLURM
-# or:
+# or directly:
 PYTHONPATH=. python src/modeling/deberta_baseline.py \
     --traces-glob "data/traces/*_traces.jsonl" \
-    --output-oof  results/deberta_pooled_oof.npz
+    --output       results/deberta_pooled_oof.npz
 ```
 
 ### 3b. Problem-conditioned DeBERTa (signal P_cond)
 
 ```bash
 sbatch scripts/sbatch_problem_cond.sh
-# or:
+# or directly:
 PYTHONPATH=. python src/modeling/deberta_conditioned.py \
     --traces-glob "data/traces/*_traces.jsonl" \
-    --output-oof  results/deberta_conditioned_pooled_oof.npz
+    --output       results/deberta_conditioned_pooled_oof.npz
 ```
 
 ### 3c. Multi-layer hidden-state probe (signal P_probe)
 
-First extract hidden states (one teacher-forcing pass per trace):
+First extract hidden states (one teacher-forcing pass per trace; outputs
+land under `data/hidden_atlas/`):
 ```bash
 sbatch scripts/sbatch_extract_llama.sh        # Llama-8B side
 sbatch scripts/sbatch_hidden_probe.sh         # Qwen-7B side
 ```
 
-Then train the multi-layer probe:
+Then run the layer-and-position sweep — the script ranges over the
+`spread_3 / spread_5 / spread_6 / late_3 / pair_adjacent / single_best /
+single_last / all` layer presets crossed with `answer / ans_last /
+ans_last_think / all_pos` positions, and writes one OOF `.npz` per
+variant. The report uses the `spread_5 + ans_last` winner.
 ```bash
 sbatch scripts/sbatch_multi_layer.sh
-# or:
+# or directly:
 PYTHONPATH=. python src/modeling/multi_layer_probe.py \
-    --hidden-states-dir data/hidden_states/ \
-    --layers 8,16,24,32 \
-    --output-oof results/multi_layer_probe_oof.npz
+    --npz-glob "data/hidden_atlas/*.npz" \
+    --output    results/month3/multi_layer_probe.json
 ```
 
 ### 3d. Step Transformer (additional signal used in the wider ablation)
 
 ```bash
 sbatch scripts/sbatch_month2.sh
-# or:
+# or directly:
 PYTHONPATH=. python src/modeling/step_transformer.py \
-    --step-embeddings-dir data/step_embeddings/ \
-    --output-oof results/step_transformer_pooled_oof.npz
+    --npz-glob "data/step_embeddings/*.npz" \
+    --output    results/step_transformer_pooled_oof.npz
 ```
 
 (Step embeddings are themselves regenerable via
@@ -140,15 +145,20 @@ meta-learners on a fresh outer 5-fold split:
 
 ```bash
 PYTHONPATH=. python src/modeling/hybrid_route_ab.py \
-    --variant ULTRA_TEXT_ONLY \
-    --deberta-oof    results/month3/deberta_pooled_oof.npz \
+    --variants ULTRA_TEXT_ONLY \
+    --features-glob   "data/features/*_features.csv" \
+    --deberta-oof     results/month3/deberta_pooled_oof.npz \
     --deberta-cond-oof results/month3/deberta_conditioned_pooled_oof.npz \
-    --roberta-oof    results/roberta_pooled_oof.npz \
-    --step-oof       results/month3/step_transformer_pooled_oof.npz \
-    --probe-oof      results/month3/hidden_probe_pooled_mlp_hidden_plus_genunc_oof.npz \
-    --output         results/month3/superhybrid_pooled.json \
-    --oof-out-dir    results/month3/
+    --roberta-oof     results/roberta_pooled_oof.npz \
+    --step-oof        results/month3/step_transformer_pooled_oof.npz \
+    --probe-oof       results/month3/multi_layer_probe_L_spread_5_P_ans_last_oof.npz \
+    --output          results/month3/superhybrid_pooled.json \
+    --oof-out-dir     results/month3/
 ```
+
+(Note `--variants` is plural — the flag accepts one or more variant names.
+`--features-glob` is required because the meta-learner can ingest
+behavioral-feature CSVs alongside the OOFs.)
 
 This produces:
 - `results/month3/superhybrid_pooled.json` — pooled metrics for LR/RF/XGB
