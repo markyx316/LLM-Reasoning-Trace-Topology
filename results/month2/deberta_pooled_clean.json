@@ -1,0 +1,101 @@
+{
+  "model": "microsoft/deberta-v3-base",
+  "n_splits": 5,
+  "epochs": 3,
+  "batch_size": 8,
+  "lr": 2e-05,
+  "max_len": 512,
+  "n_samples": 6378,
+  "base_accuracy": 0.6139855754154907,
+  "fold_metrics": [
+    {
+      "method": "fold_1",
+      "auroc": 0.5,
+      "auprc": 0.0,
+      "ece": 0.0,
+      "accuracy": 0.0,
+      "f1": 0.0,
+      "prr": 0.0,
+      "aurc_method": 0.0,
+      "aurc_random": 0.0,
+      "aurc_oracle": 0.0,
+      "n_samples": 1276
+    },
+    {
+      "method": "fold_2",
+      "auroc": 0.5,
+      "auprc": 0.0,
+      "ece": 0.0,
+      "accuracy": 0.0,
+      "f1": 0.0,
+      "prr": 0.0,
+      "aurc_method": 0.0,
+      "aurc_random": 0.0,
+      "aurc_oracle": 0.0,
+      "n_samples": 1276
+    },
+    {
+      "method": "fold_3",
+      "auroc": 0.5,
+      "auprc": 0.0,
+      "ece": 0.0,
+      "accuracy": 0.0,
+      "f1": 0.0,
+      "prr": 0.0,
+      "aurc_method": 0.0,
+      "aurc_random": 0.0,
+      "aurc_oracle": 0.0,
+      "n_samples": 1276
+    },
+    {
+      "method": "fold_4",
+      "auroc": 0.5,
+      "auprc": 0.0,
+      "ece": 0.0,
+      "accuracy": 0.0,
+      "f1": 0.0,
+      "prr": 0.0,
+      "aurc_method": 0.0,
+      "aurc_random": 0.0,
+      "aurc_oracle": 0.0,
+      "n_samples": 1275
+    },
+    {
+      "method": "fold_5",
+      "auroc": 0.5,
+      "auprc": 0.0,
+      "ece": 0.0,
+      "accuracy": 0.0,
+      "f1": 0.0,
+      "prr": 0.0,
+      "aurc_method": 0.0,
+      "aurc_random": 0.0,
+      "aurc_oracle": 0.0,
+      "n_samples": 1275
+    }
+  ],
+  "summary": {
+    "auroc_mean": 0.5,
+    "auroc_std": 0.0,
+    "auprc_mean": 0.0,
+    "auprc_std": 0.0,
+    "ece_mean": 0.0,
+    "ece_std": 0.0,
+    "prr_mean": 0.0,
+    "prr_std": 0.0
+  },
+  "overall": {
+    "method": "overall",
+    "auroc": 0.5,
+    "auprc": 0.0,
+    "ece": 0.0,
+    "accuracy": 0.0,
+    "f1": 0.0,
+    "prr": 0.0,
+    "aurc_method": 0.0,
+    "aurc_random": 0.0,
+    "aurc_oracle": 0.0,
+    "n_samples": 6378
+  },
+  "oof_path": "results/month2/deberta_pooled_clean_oof.npz"
+}

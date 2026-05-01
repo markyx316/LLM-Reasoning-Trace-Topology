@@ -1,0 +1,67 @@
+{
+  "refit_of_study": "hybrid_v1_clean",
+  "best_trial_number": 1800,
+  "pooled_auroc": 0.8053842992190712,
+  "weighted_auroc": 0.7777248923473827,
+  "per_group": [
+    {
+      "group": "arc_challenge_llama8b",
+      "n": 1168,
+      "auroc": 0.6703885852472534,
+      "label_rate": 0.6583904109589042
+    },
+    {
+      "group": "arc_challenge_qwen7b",
+      "n": 1165,
+      "auroc": 0.7312869875222816,
+      "label_rate": 0.7081545064377682
+    },
+    {
+      "group": "gpqa_diamond_llama8b",
+      "n": 189,
+      "auroc": 0.7161007161007162,
+      "label_rate": 0.4126984126984127
+    },
+    {
+      "group": "gpqa_diamond_qwen7b",
+      "n": 192,
+      "auroc": 0.7552654673102238,
+      "label_rate": 0.4479166666666667
+    },
+    {
+      "group": "gsm8k_llama8b",
+      "n": 1319,
+      "auroc": 0.7587980107434685,
+      "label_rate": 0.45564821834723274
+    },
+    {
+      "group": "gsm8k_qwen7b",
+      "n": 1318,
+      "auroc": 0.8503414884239215,
+      "label_rate": 0.6729893778452201
+    },
+    {
+      "group": "math500_llama8b",
+      "n": 494,
+      "auroc": 0.8683518005540167,
+      "label_rate": 0.6153846153846154
+    },
+    {
+      "group": "math500_qwen7b",
+      "n": 499,
+      "auroc": 0.9378738608535068,
+      "label_rate": 0.7234468937875751
+    }
+  ],
+  "config": {
+    "family": "lr",
+    "feature_subset": "oof+hand",
+    "scaler": "robust",
+    "add_group_dummies": true,
+    "isotonic": false,
+    "lr_C": 0.0454710975896273,
+    "lr_penalty": "l1",
+    "lr_class_weight_balanced": false
+  },
+  "feature_subset_size": 34
+}

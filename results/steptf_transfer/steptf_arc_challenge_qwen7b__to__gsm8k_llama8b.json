@@ -1,0 +1,30 @@
+{
+  "source": "arc_challenge_qwen7b",
+  "target": "gsm8k_llama8b",
+  "diagonal": false,
+  "epochs": 15,
+  "lr": 0.0003,
+  "batch_size": 32,
+  "seed": 42,
+  "n_source_train": 1172,
+  "n_target_eval": 1319,
+  "source_pos_rate": 0.7056313993174061,
+  "target_pos_rate": 0.45564821834723274,
+  "metrics": {
+    "method": "arc_challenge_qwen7b__to__gsm8k_llama8b",
+    "auroc": 0.5541205697097225,
+    "auprc": 0.5056352376049174,
+    "ece": 0.08854483692730986,
+    "accuracy": 0.4624715693707354,
+    "f1": 0.6115068493150685,
+    "accuracy_at_80": 0.46161137440758293,
+    "accuracy_at_90": 0.45324347093513057,
+    "prr": 0.12457728133850066,
+    "aurc_method": 0.4993724964564217,
+    "aurc_random": 0.543939081287602,
+    "aurc_oracle": 0.1861966072799673,
+    "n_samples": 1319,
+    "n_correct": 601,
+    "base_accuracy": 0.45564821834723274
+  }
+}

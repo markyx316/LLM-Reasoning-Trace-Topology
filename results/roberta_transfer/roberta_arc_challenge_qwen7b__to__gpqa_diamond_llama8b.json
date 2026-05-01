@@ -1,0 +1,31 @@
+{
+  "model": "roberta-base",
+  "source": "arc_challenge_qwen7b",
+  "target": "gpqa_diamond_llama8b",
+  "diagonal": false,
+  "epochs": 3,
+  "lr": 2e-05,
+  "batch_size": 16,
+  "seed": 42,
+  "n_source_train": 1172,
+  "n_target_eval": 198,
+  "source_pos_rate": 0.7056313993174061,
+  "target_pos_rate": 0.40404040404040403,
+  "metrics": {
+    "method": "arc_challenge_qwen7b__to__gpqa_diamond_llama8b",
+    "auroc": 0.6782838983050847,
+    "auprc": 0.6381101326591434,
+    "ece": 0.24712054882988788,
+    "accuracy": 0.5353535353535354,
+    "f1": 0.5818181818181818,
+    "accuracy_at_80": 0.45569620253164556,
+    "accuracy_at_90": 0.42134831460674155,
+    "prr": 0.45171423409142575,
+    "aurc_method": 0.4289086626817672,
+    "aurc_random": 0.5929496990103049,
+    "aurc_oracle": 0.2297974581727132,
+    "n_samples": 198,
+    "n_correct": 80,
+    "base_accuracy": 0.40404040404040403
+  }
+}

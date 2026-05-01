@@ -1,0 +1,167 @@
+{
+  "output_parquet": "/nfs/roberts/project/cpsc4770/cpsc4770_ym466/LLM-Reasoning-Trace-Topology/data/hybrid_table.parquet",
+  "oofs": [
+    {
+      "name": "oof_roberta",
+      "path": "results/roberta_pooled_oof.npz",
+      "n_rows": 6378,
+      "n_groups": 8,
+      "has_fold": true,
+      "leaky": false,
+      "protocol": "leaky_best_epoch_on_val"
+    },
+    {
+      "name": "oof_deberta",
+      "path": "results/month2/deberta_pooled_oof.npz",
+      "n_rows": 6378,
+      "n_groups": 8,
+      "has_fold": true,
+      "leaky": false,
+      "protocol": "leaky_best_epoch_on_val"
+    },
+    {
+      "name": "oof_step",
+      "path": "results/step_transformer_pooled_oof.npz",
+      "n_rows": 6378,
+      "n_groups": 8,
+      "has_fold": true,
+      "leaky": false,
+      "protocol": "leaky_best_epoch_on_val"
+    },
+    {
+      "name": "oof_gin_hyb",
+      "path": "results/route_ab/trace_gnn_hybrid_pooled_oof.npz",
+      "n_rows": 6398,
+      "n_groups": 9,
+      "has_fold": true,
+      "leaky": false,
+      "protocol": "leaky_best_epoch_on_val_plus_earlystop"
+    },
+    {
+      "name": "oof_gin_str",
+      "path": "results/route_ab/trace_gnn_structural_pooled_oof.npz",
+      "n_rows": 6398,
+      "n_groups": 9,
+      "has_fold": true,
+      "leaky": false,
+      "protocol": "leaky_best_epoch_on_val_plus_earlystop"
+    },
+    {
+      "name": "oof_shapelet",
+      "path": "results/route_ab/shapelet_oof.npz",
+      "n_rows": 6364,
+      "n_groups": 9,
+      "has_fold": false,
+      "leaky": false,
+      "protocol": "clean_no_epoch_selection"
+    }
+  ],
+  "features": [
+    {
+      "prefix": "hand",
+      "suffix": "features_rec",
+      "status": "ok",
+      "n_cols": 28,
+      "n_matched": 6344,
+      "coverage_pct": 1.0
+    },
+    {
+      "prefix": "ng",
+      "suffix": "ngram",
+      "status": "ok",
+      "n_cols": 231,
+      "n_matched": 6344,
+      "coverage_pct": 1.0
+    },
+    {
+      "prefix": "graph",
+      "suffix": "graph",
+      "status": "ok",
+      "n_cols": 15,
+      "n_matched": 6344,
+      "coverage_pct": 1.0
+    },
+    {
+      "prefix": "timing",
+      "suffix": "timing",
+      "status": "ok",
+      "n_cols": 46,
+      "n_matched": 6344,
+      "coverage_pct": 1.0
+    },
+    {
+      "prefix": "ph",
+      "suffix": "structural_ph",
+      "status": "ok",
+      "n_cols": 36,
+      "n_matched": 6344,
+      "coverage_pct": 1.0
+    }
+  ],
+  "counts": {
+    "after_oof_inner_join": 6344,
+    "per_group": {
+      "arc_challenge_llama8b": 1168,
+      "arc_challenge_qwen7b": 1165,
+      "gpqa_diamond_llama8b": 189,
+      "gpqa_diamond_qwen7b": 192,
+      "gsm8k_llama8b": 1319,
+      "gsm8k_qwen7b": 1318,
+      "math500_llama8b": 494,
+      "math500_qwen7b": 499
+    },
+    "total": 6344,
+    "n_feature_cols": 356,
+    "n_oof_cols": 6
+  },
+  "provenance_summary": {
+    "oof_roberta": {
+      "leaky": false,
+      "protocol": "leaky_best_epoch_on_val"
+    },
+    "oof_deberta": {
+      "leaky": false,
+      "protocol": "leaky_best_epoch_on_val"
+    },
+    "oof_step": {
+      "leaky": false,
+      "protocol": "leaky_best_epoch_on_val"
+    },
+    "oof_gin_hyb": {
+      "leaky": false,
+      "protocol": "leaky_best_epoch_on_val_plus_earlystop"
+    },
+    "oof_gin_str": {
+      "leaky": false,
+      "protocol": "leaky_best_epoch_on_val_plus_earlystop"
+    },
+    "oof_shapelet": {
+      "leaky": false,
+      "protocol": "clean_no_epoch_selection"
+    }
+  },
+  "fold_disagreement_vs_canonical": {
+    "oof_deberta": {
+      "agree": 6344,
+      "total": 6344,
+      "pct": 1.0
+    },
+    "oof_step": {
+      "agree": 6344,
+      "total": 6344,
+      "pct": 1.0
+    },
+    "oof_gin_hyb": {
+      "agree": 5558,
+      "total": 6344,
+      "pct": 0.8761
+    },
+    "oof_gin_str": {
+      "agree": 5558,
+      "total": 6344,
+      "pct": 0.8761
+    }
+  },
+  "any_leaky": false,
+  "leaky_policy": "fail"
+}

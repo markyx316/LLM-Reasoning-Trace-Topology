@@ -1,0 +1,30 @@
+{
+  "source": "gsm8k_llama8b",
+  "target": "gsm8k_llama8b",
+  "diagonal": true,
+  "epochs": 15,
+  "lr": 0.0003,
+  "batch_size": 32,
+  "seed": 42,
+  "n_source_train": 1319,
+  "n_target_eval": 1319,
+  "source_pos_rate": 0.45564821834723274,
+  "target_pos_rate": 0.45564821834723274,
+  "metrics": {
+    "method": "gsm8k_llama8b__to__gsm8k_llama8b",
+    "auroc": 0.599621568509309,
+    "auprc": 0.5398600154652653,
+    "ece": 0.04747609445052764,
+    "accuracy": 0.45564821834723274,
+    "f1": 0.6260416666666667,
+    "accuracy_at_80": 0.4985781990521327,
+    "accuracy_at_90": 0.481044650379107,
+    "prr": 0.2046319678645068,
+    "aurc_method": 0.4707335348427026,
+    "aurc_random": 0.543939081287602,
+    "aurc_oracle": 0.1861966072799673,
+    "n_samples": 1319,
+    "n_correct": 601,
+    "base_accuracy": 0.45564821834723274
+  }
+}

@@ -205,3 +205,30 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Local agent state
+.claude/
+# Claude Code project instructions (local dev aid, not part of the research artifact)
+CLAUDE.md
+
+# Runtime logs
+logs/
+
+# Large precomputed embeddings (can be regenerated via build_step_embeddings.py)
+data/step_embeddings/
+
+# Large hidden-state extractions (can be regenerated from traces)
+data/hidden_atlas/
+data/hidden_states/
+# BGE variant (165MB per .npz -> exceeds GitHub's 100MB hard limit)
+data/step_embeddings_bge/
+# Precomputed graphs (regeneratable; individual .npz up to 84MB)
+data/graphs/
+# Bundled data zips (hundreds of MB; each content file is already tracked
+# or ignored individually, so the zip is redundant and blows the push limit)
+data/*.zip
+
+# Scratch / SLURM stdout+stderr captures kept in the repo root
+err.txt
+out.txt
+stage_*.txt

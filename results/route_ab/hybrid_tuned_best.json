@@ -1,0 +1,51 @@
+{
+  "study_name": "_smoke_post_patch2",
+  "n_trials": 3,
+  "best_trial_number": 2,
+  "best_weighted_auroc": 0.7706504430579968,
+  "best_pooled_auroc": 0.7971621559560474,
+  "best_elapsed_sec": 15.59525179862976,
+  "best_params": {
+    "family": "xgb",
+    "feature_subset": "oof+ph",
+    "scaler": "robust",
+    "add_group_dummies": false,
+    "isotonic": false,
+    "xgb_n_estimators": 611,
+    "xgb_max_depth": 9,
+    "xgb_lr": 0.00152551885793314,
+    "xgb_subsample": 0.6792328642721364,
+    "xgb_colsample": 0.3811083416675908,
+    "xgb_min_child": 9,
+    "xgb_lambda": 0.3113095956122124,
+    "xgb_alpha": 0.021066486017042207,
+    "xgb_gamma": 0.3177917514301182
+  },
+  "provenance": {
+    "oof_roberta": {
+      "leaky": true,
+      "protocol": "leaky_best_epoch_on_val"
+    },
+    "oof_deberta": {
+      "leaky": true,
+      "protocol": "leaky_best_epoch_on_val"
+    },
+    "oof_step": {
+      "leaky": true,
+      "protocol": "leaky_best_epoch_on_val"
+    },
+    "oof_gin_hyb": {
+      "leaky": true,
+      "protocol": "leaky_best_epoch_on_val_plus_earlystop"
+    },
+    "oof_gin_str": {
+      "leaky": true,
+      "protocol": "leaky_best_epoch_on_val_plus_earlystop"
+    },
+    "oof_shapelet": {
+      "leaky": false,
+      "protocol": "clean_no_epoch_selection"
+    }
+  },
+  "any_leaky_in_table": true
+}

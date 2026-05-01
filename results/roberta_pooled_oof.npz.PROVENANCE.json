@@ -1,0 +1,25 @@
+{
+  "path": "results/roberta_pooled_oof.npz",
+  "kind": "roberta_pooled",
+  "protocol": "leaky_best_epoch_on_val",
+  "leaky": false,
+  "why_flagged": "Pooled RoBERTa fine-tune; OOF fold predictions were picked by best val_AUROC across 3 epochs (test-set model selection).",
+  "summary": {
+    "exists": true,
+    "n_samples": 6378,
+    "has_oof_fold": true,
+    "has_groups": true,
+    "keys": [
+      "item_ids",
+      "groups",
+      "y_true",
+      "oof_prob",
+      "oof_fold",
+      "seed",
+      "n_splits"
+    ],
+    "sha256_prefix": "0025e749e2e2900a",
+    "size_bytes": 37743,
+    "pooled_auroc": 0.7980904747047877
+  }
+}
