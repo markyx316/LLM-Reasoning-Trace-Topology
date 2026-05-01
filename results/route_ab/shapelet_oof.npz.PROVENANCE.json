@@ -1,0 +1,22 @@
+{
+  "path": "results/route_ab/shapelet_oof.npz",
+  "kind": "shapelet_pooled",
+  "protocol": "clean_no_epoch_selection",
+  "leaky": false,
+  "why_flagged": "Fold-local info-gain mining + LR. No epoch concept, no test-set peeking. Leakage-safe by construction.",
+  "summary": {
+    "exists": true,
+    "n_samples": 6364,
+    "has_oof_fold": false,
+    "has_groups": true,
+    "keys": [
+      "item_ids",
+      "y_true",
+      "oof_prob",
+      "groups"
+    ],
+    "sha256_prefix": "4632d02dd08d27fb",
+    "size_bytes": 25506,
+    "pooled_auroc": 0.6398417264083154
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "path": "results/route_ab/trace_gnn_hybrid_pooled_oof.npz",
+  "kind": "tracegin_hybrid_pooled",
+  "protocol": "leaky_best_epoch_on_val_plus_earlystop",
+  "leaky": false,
+  "why_flagged": "Pooled TraceGIN-hybrid; OOF picked by best val_AUROC AND early-stopped when val_AUROC plateaued. Double leak.",
+  "summary": {
+    "exists": true,
+    "n_samples": 6398,
+    "has_oof_fold": true,
+    "has_groups": true,
+    "keys": [
+      "item_ids",
+      "groups",
+      "y_true",
+      "oof_prob",
+      "oof_fold",
+      "seed",
+      "n_splits"
+    ],
+    "sha256_prefix": "b45ea110c538812b",
+    "size_bytes": 37943,
+    "pooled_auroc": 0.7125702049779702
+  }
+}

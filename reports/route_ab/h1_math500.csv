@@ -1,0 +1,24 @@
+model_name,group,auroc,H1_pass,n_samples,base_accuracy
+TraceGIN-hybrid,math500_deepseek_r1,0.8901098901098901,True,20,0.65
+TraceGIN-struct,math500_deepseek_r1,0.6373626373626373,False,20,0.65
+Shapelet (A2+),math500_deepseek_r1,0.32967032967032966,False,20,0.65
+RoBERTa,math500_llama8b,0.8611288265306122,True,500,0.608
+DeBERTa-v3,math500_llama8b,0.8277977309344791,True,500,0.608
+TraceGIN-hybrid,math500_llama8b,0.7664641514500536,True,500,0.608
+StepTF (MiniLM),math500_llama8b,0.6678470730397422,False,500,0.608
+Trace-MLM (no pretrain),math500_llama8b,0.6502248925886145,False,500,0.608
+StepTF (BGE),math500_llama8b,0.6477913533834587,False,500,0.608
+Trace-MLM,math500_llama8b,0.6415984156820622,False,500,0.608
+TraceGIN-struct,math500_llama8b,0.6129665682062299,False,500,0.608
+BehaviorSeq-LM,math500_llama8b,0.6017722878625135,False,500,0.608
+Shapelet (A2+),math500_llama8b,0.5812759695290859,False,494,0.6153846153846154
+RoBERTa,math500_qwen7b,0.929552203112856,True,500,0.722
+DeBERTa-v3,math500_qwen7b,0.8718089240518941,True,500,0.722
+TraceGIN-hybrid,math500_qwen7b,0.8520098048984632,True,500,0.722
+StepTF (MiniLM),math500_qwen7b,0.7004623448055959,False,500,0.722
+Trace-MLM (no pretrain),math500_qwen7b,0.6984196576256999,False,500,0.722
+StepTF (BGE),math500_qwen7b,0.6598377807449333,False,500,0.722
+Trace-MLM,math500_qwen7b,0.6388529065943922,False,500,0.722
+BehaviorSeq-LM,math500_qwen7b,0.6302437274557087,False,500,0.722
+TraceGIN-struct,math500_qwen7b,0.5968433009824827,False,500,0.722
+Shapelet (A2+),math500_qwen7b,0.5415512465373961,False,499,0.7234468937875751
