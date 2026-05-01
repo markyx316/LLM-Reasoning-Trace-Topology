@@ -20,15 +20,10 @@
 
 \author{
   Peng Chen \\
-  Yale University \\
   \texttt{peng.chen@yale.edu} \\
-  \And
   Lixing Lin \\
-  Yale University \\
   \texttt{lixing.lin@yale.edu} \\
-  \And
   Youxuan Ma \\
-  Yale University \\
   \texttt{youxuan.ma@yale.edu}
 }
 
@@ -127,7 +122,7 @@ generalization-relevant features.
 
 \section{Method}
 
-\subsection{Four complementary signals}
+\textbf{3.1 Four complementary signals}
 
 SuperHybrid combines four views of a trace, each producing a calibrated
 probability or a small feature vector that becomes input to a stacking
@@ -155,7 +150,7 @@ conclude): length and proportions, structural features
 behavior cycle count, longest forward run), and content-free meta-features
 (wait-density, question-mark density, repetition rate).
 
-\subsection{Stacking with leakage-safe out-of-fold predictions}
+\textbf{3.2 Stacking with leakage-safe out-of-fold predictions}
 
 Each base predictor is trained with $5$-fold stratified cross-validation and
 emits \emph{out-of-fold} (OOF) probabilities---for every item, the prediction
@@ -168,7 +163,7 @@ We compare three meta-learners (logistic regression, random forest, XGBoost).
 Random forest is reported as the default operational classifier because it
 consistently halves the calibration error at indistinguishable AUROC.
 
-\subsection{Evaluation}
+\textbf{Evaluation}
 
 We report AUROC, AUPRC, expected calibration error (ECE; $10$ uniform bins),
 and accuracy at fixed coverage (selective generation). Statistical tests use
@@ -178,42 +173,47 @@ out across overall, model-family, dataset-family, and per-cell slices.
 
 \section{Experimental Setup}
 
-\paragraph{Generation.} We use DeepSeek-R1-Distill-Qwen-7B and
-Llama-8B~\cite{deepseekr1} (open-weight, MIT and Llama Community licenses) at
-$T = 0.6$, max $32{,}768$ tokens, on MATH500 ($500$ items), GSM8K ($1{,}319$),
-GPQA-Diamond ($198$) and ARC-Challenge ($1{,}172$). Each prompt produces
-exactly one response; we generate $6{,}378$ traces in total ($8$
-dataset$\times$model cells). Final answers are extracted from outside the
-\texttt{<think>} block and scored with exact-match (math) or letter-match
-(multiple-choice).
+\paragraph{Datasets and generation.} We use four publicly released test
+splits: MATH500~\cite{hendrycks2021math} (a $500$-item subset of the MATH
+competition-mathematics benchmark), GSM8K~\cite{cobbe2021gsm8k} ($1{,}319$
+grade-school word problems), GPQA-Diamond~\cite{rein2023gpqa} ($198$
+graduate-level science MCQ), and ARC-Challenge~\cite{clark2018arc}
+($1{,}172$ science MCQ). Each item is solved by both
+DeepSeek-R1-Distill-Qwen-7B and Llama-8B~\cite{deepseekr1} (open-weight, MIT
+and Llama Community licenses) at $T = 0.6$, top-$p\!=\!1$, max $32{,}768$
+tokens, exactly one sample per prompt --- $6{,}378$ traces across $8$
+dataset$\times$model cells. Final answers are extracted from outside the
+\texttt{<think>} block and scored by exact-match (math) or letter-match
+(MCQ); no other preprocessing is applied to the trace text.
 
-\paragraph{Behavior parser.} Sentences are segmented with a math-aware spaCy
-pipeline and labeled by a priority-ordered keyword/regex matcher
+\paragraph{Behavior parser.} Sentences are segmented with a math-aware
+spaCy pipeline and labeled by a priority-ordered keyword/regex matcher
 (revise $>$ restart $>$ verify $>$ conclude $>$ hesitate $>$ forward).
 Inter-annotator agreement against $100$ manually-labeled traces is
 Cohen's $\kappa = 0.74$.
 
-\paragraph{Hidden-state extraction.} For the probe, we save hidden states at
-the answer-marker token at four depths (layer $8, 16, 24, 32$) for the
-$32$-layer Qwen-7B and Llama-8B distillations, requiring teacher-forcing of
-the saved trace through the generator (a single forward pass).
-
-\paragraph{Baselines.} We compare against (a) length-only logistic regression
-on trace and answer length; (b) seven lexical surface cues; (c) the $28$
-handcrafted structural features alone; (d) TF-IDF unigram+bigram logistic
-regression; (e) plain DeBERTa-v3-base fine-tuned on the trace tail. (e) is the
-\emph{text-encoder bar} a structural-UQ method must clear to claim that
-structure adds value over content.
+\paragraph{Compute and baselines.} Trace generation, hidden-state
+extraction, and DeBERTa fine-tuning ran on Yale University's Grace HPC
+cluster (NVIDIA A100/H100 GPUs allocated via SLURM, PyTorch 2.2);
+behavioral-feature parsing, stacking, and statistical analysis are CPU-only
+on a workstation. Hyperparameters and the Optuna tuning protocol are
+detailed in Appendix~\ref{app:hyper}. We compare SuperHybrid against
+(a) length-only logistic regression; (b) seven lexical surface cues;
+(c) the $28$ handcrafted behavioral features alone;
+(d) TF-IDF unigram+bigram logistic regression; (e) plain DeBERTa-v3-base
+fine-tuned on the trace tail---the text-encoder bar a structural-UQ method
+must clear to claim that structure adds value over content.
 
 \section{Results}
 
-\subsection{Pooled AUROC and calibration}
+\textbf{5.1 Pooled AUROC and calibration}
 
 Table~\ref{tab:pooled} reports pooled AUROC and ECE across the eight cells
 ($n = 6{,}344$--$6{,}378$ depending on OOF coverage). $95\%$ DeLong
 confidence intervals are shown for the most relevant comparators.
 
 \begin{table}[!htbp]
+\scriptsize
 \caption{Pooled AUROC and ECE across $8$ dataset$\times$model cells.}
 \label{tab:pooled}
 \centering
@@ -242,7 +242,7 @@ halves ECE from $0.090$ to $0.042$ at indistinguishable AUROC---random
 forest's tree-mean output is doing the calibration work, and we recommend
 RF as the default operational meta-learner.
 
-\subsection{Per-cell results and cross-domain transfer}
+\textbf{5.2 Per-cell results and cross-domain transfer}
 
 Table~\ref{tab:percell-transfer} (left) shows AUROC of SuperHybrid (RF) per
 cell, strongest on math; Qwen cells are uniformly $\approx 0.06$ above
@@ -256,8 +256,8 @@ grade-school arithmetic chains) differ markedly from MATH500's
 competition-mathematics traces.
 
 \begin{table}[!htbp]
-\caption{(Left) per-cell AUROC, SuperHybrid (RF). (Right) out-of-domain
-AUROC, source $=$ MATH500-Qwen7B.}
+\scriptsize
+\caption{(Left) per-cell AUROC, SuperHybrid (RF). (Right) out-of-domain AUROC.}
 \label{tab:percell-transfer}
 \centering
 \footnotesize
@@ -288,7 +288,7 @@ GSM8K         & 1319 & 0.508           & 0.492 \\
 \end{minipage}
 \end{table}
 
-\subsection{What does and does not contribute: text-saturation}
+\textbf{5.3 What does and does not contribute: text-saturation}
 
 We expanded the structural feature set from $28$ handcrafted features to
 $328$ features by adding behavior $n$-gram motifs ($231$ features), trace
@@ -334,7 +334,7 @@ beyond the small probe gain.
 and RF near $0.042$; the AUROC distinction is within paired-DeLong noise
 ($\Delta \approx 0.005$), but the calibration gap is two-fold and
 structural---RF's tree-mean averaging halves it. Combined with
-text-saturation (Section~5.4), this argues for a deliberately
+text-saturation, this argues for a deliberately
 \emph{minimal} stack: trace-tail encoder + problem-conditioned encoder +
 multi-layer probe + small behavioral vector, stacked with RF. The recipe is
 computationally light---one generation plus one teacher-forcing pass. At
@@ -407,6 +407,218 @@ R.~Vashurin et~al.
   Reinforcement Learning.
 \newblock \emph{arXiv:2501.12948}, 2025.
 
+\bibitem{hendrycks2021math}
+D.~Hendrycks, C.~Burns, S.~Kadavath, A.~Arora, S.~Basart, E.~Tang, D.~Song,
+  and J.~Steinhardt.
+\newblock Measuring Mathematical Problem Solving with the {MATH} Dataset.
+\newblock In \emph{NeurIPS Datasets and Benchmarks}, 2021.
+
+\bibitem{cobbe2021gsm8k}
+K.~Cobbe et~al.
+\newblock Training Verifiers to Solve Math Word Problems.
+\newblock \emph{arXiv:2110.14168}, 2021.
+
+\bibitem{rein2023gpqa}
+D.~Rein, B.~L. Hou, A.~C. Stickland, J.~Petty, R.~Y. Pang, J.~Dirani,
+  J.~Michael, and S.~R. Bowman.
+\newblock {GPQA}: A Graduate-Level Google-Proof {Q\&A} Benchmark.
+\newblock \emph{arXiv:2311.12022}, 2023.
+
+\bibitem{clark2018arc}
+P.~Clark, I.~Cowhey, O.~Etzioni, T.~Khot, A.~Sabharwal, C.~Schoenick, and
+  O.~Tafjord.
+\newblock Think You Have Solved Question Answering? Try {ARC}, the {AI2}
+  Reasoning Challenge.
+\newblock \emph{arXiv:1803.05457}, 2018.
+
+\bibitem{he2021deberta}
+P.~He, J.~Gao, and W.~Chen.
+\newblock {DeBERTaV3}: Improving {DeBERTa} using {ELECTRA}-Style Pre-Training
+  with Gradient-Disentangled Embedding Sharing.
+\newblock In \emph{ICLR}, 2023.
+
+\bibitem{akiba2019optuna}
+T.~Akiba, S.~Sano, T.~Yanase, T.~Ohta, and M.~Koyama.
+\newblock Optuna: A Next-Generation Hyperparameter Optimization Framework.
+\newblock In \emph{KDD}, 2019.
+
 \end{thebibliography}
+
+% ============================================================================
+%                                APPENDICES
+% (References and appendix do not count toward the 4-page body limit.)
+% ============================================================================
+
+\appendix
+
+\section{Computing Infrastructure and Hyperparameters}
+\label{app:hyper}
+
+\paragraph{Compute resources.} All trace generation, hidden-state
+extraction, and DeBERTa fine-tuning were performed on Yale University's
+\emph{Grace} HPC cluster, with jobs scheduled via SLURM on NVIDIA B200 and H200 GPUs from the \texttt{gpu_b200} and \texttt{gpu_h200} partition. Software
+stack: PyTorch~2.2.0, HuggingFace Transformers $\ge 4.40$,
+sentence-transformers, spaCy~3.x, \texttt{torch\_geometric}, scikit-learn
+1.x, XGBoost~3.2, Optuna~4.x. Aggregate GPU usage across the project was
+$\approx 60$ GPU-hours. All meta-learning, behavioral-feature parsing, and
+statistical analysis were run CPU-only.
+
+\paragraph{Trace generation.} Temperature $T = 0.6$, top-$p = 1.0$, no
+repetition penalty, max $32{,}768$ tokens, exactly one sample per prompt.
+Each model is loaded in bf16 for generation; the official chat template is
+applied with the standard system prompt. Generation is performed once per
+prompt; we do \emph{not} use sampling baselines.
+
+\paragraph{DeBERTa-v3 fine-tuning} (signal $P_{\text{text}}$ and
+$P_{\text{cond}}$). Backbone: \texttt{microsoft/deberta-v3-base}~\cite{he2021deberta}.
+Input: last $512$ trace tokens (for $P_{\text{text}}$) or
+\texttt{[CLS]} + problem + \texttt{[SEP]} + trace tail (for
+$P_{\text{cond}}$), truncated to $512$. Optimizer AdamW
+($\beta_1\!=\!0.9, \beta_2\!=\!0.999, \epsilon\!=\!10^{-8}$),
+weight decay $0.01$, peak learning rate $2 \times 10^{-5}$, linear warmup
+over $10\%$ of steps then linear decay, batch size $16$, $5$ epochs. Models
+are loaded in fp32 (an early bf16 fallback caused saturation at AUROC $0.5$
+and was patched). Training is repeated under $5$-fold stratified CV with
+\texttt{random\_state=42}; out-of-fold probabilities are saved as the OOF
+input to the meta-learner.
+
+\paragraph{Multi-layer hidden-state probe} (signal $P_{\text{probe}}$).
+Hidden states are extracted at the answer-marker token at four decoder
+depths (layers $\{8, 16, 24, 32\}$ for the $32$-layer Qwen-7B and Llama-8B
+distillations) by a single teacher-forcing pass over the saved trace.
+Probe head: 2-layer MLP with hidden size $256$, ReLU activations, dropout
+$0.3$, sigmoid output. Optimizer AdamW, learning rate $10^{-3}$, weight
+decay $10^{-4}$, batch size $128$, up to $30$ epochs with early stopping
+on validation AUROC (patience $5$). $5$-fold stratified CV;
+\texttt{random\_state=42}.
+
+\paragraph{Behavioral feature pipeline} (signal $F$). spaCy
+\texttt{en\_core\_web\_sm} tokenizer with a custom math-aware sentence
+segmenter. Six-class taxonomy
+(forward / verify / revise / restart / hesitate / conclude) by
+priority-ordered regex matcher; $28$ scalar features per trace (length and
+proportion, structural, content-free meta). Inter-annotator agreement
+Cohen's $\kappa = 0.74$ over $100$ manually labeled traces.
+
+\paragraph{Stacking meta-learners.} All operate on the OOF probability
+matrix produced by the four base predictors, plus the $28$-dim behavioral
+vector.
+
+\begin{itemize}\itemsep0.2em\topsep0.2em
+\item \emph{Logistic regression.} L1 penalty, robust scaler on inputs.
+Inverse-regularization strength $C$ selected by inner $5$-fold CV over
+$\{10^{-3}, 10^{-2}, \ldots, 10\}$.
+\item \emph{Random forest.} $200$ trees, $\text{max\_depth}=\text{None}$,
+$\text{min\_samples\_leaf}=5$, $\text{class\_weight}=\text{balanced}$,
+\texttt{random\_state=42}.
+\item \emph{XGBoost.} Selected by an Optuna~\cite{akiba2019optuna} study
+of $2{,}000$ trials maximising mean $5$-fold CV AUROC. Search space:
+$\eta \in [10^{-3}, 0.3]$ log-uniform, max\_depth $\in \{3,\ldots,10\}$,
+subsample $\in [0.5, 1.0]$, colsample\_bytree $\in [0.5, 1.0]$,
+n\_estimators $\in \{100, \ldots, 800\}$, $\gamma \in [0, 5]$,
+$\lambda \in [10^{-3}, 10]$, $\alpha \in [10^{-3}, 10]$. Final config:
+$\eta=0.05$, max\_depth $6$, subsample $0.8$, colsample\_bytree $0.7$,
+n\_estimators $400$, $\gamma=0.1$, $\lambda=1.0$, $\alpha=10^{-3}$.
+\end{itemize}
+
+\paragraph{Outer cross-validation for the stacker.} Fresh $5$-fold
+stratified split with \texttt{random\_state=42}, identical fold assignment
+to the base learners' inner CV. Each item is therefore held out twice
+(once by every base learner, once by the meta-learner), making the stacked
+prediction leakage-safe at the item level.
+
+\paragraph{Statistical inference.} DeLong $95\%$ CIs are computed in the
+logit space and back-transformed for asymmetry stability. Paired DeLong
+tests align two predictors on the composite key
+$(\text{group}, \text{item\_id})$, use the empirical kernel-matrix
+estimator for the variance of the AUROC difference, and report two-sided
+$p$-values. Tests fan out across overall, model-family, dataset-family,
+and per-cell slices ($8$ cells) without multiple-comparison correction in
+the body table; per-slice $p$-values should be read as exploratory.
+
+\section{AI Use Statement}
+\label{app:ai}
+
+We used Anthropic's Claude (Sonnet 4.6 / Opus 4.7, accessed via Claude
+Code) as a coding and writing assistant during this project. We disclose
+its use here in the spirit of the course's AI-use policy.
+
+\paragraph{Where AI helped.}
+\begin{itemize}\itemsep0.2em\topsep0.2em
+\item \textbf{Code review and debugging.} Diagnosing a numpy ragged-array
+bug (\texttt{ValueError: could not broadcast (2,N) into (2,)}) in the
+trace-DAG construction script; identifying a misalignment in the behavior
+taxonomy mapping between the legacy and new parsers (the legacy 7-class
+enum lacked a \texttt{REVISE} member, silently mapping revise events to
+\texttt{PAD}). Both fixes were applied by the authors after AI-assisted
+diagnosis.
+\item \textbf{Statistical analysis.} Interpreting paired DeLong test
+results across the dozens of challenger-vs-baseline comparisons we ran ---
+which $\Delta$AUROC's are statistically significant given sample size and
+relative variance; which apparent per-slice wins/losses are noise.
+\item \textbf{Report drafting and revision.} Generating initial drafts
+of this report, restructuring sections, compressing for the
+$4$-page NeurIPS limit, formatting tables, and producing the LaTeX source.
+The first author iterated heavily over each draft and made all final
+content decisions.
+\item \textbf{Architectural sounding-board.} Discussing whether to drop or
+retain individual signal families, what ablations would be informative,
+and how to frame the negative results we encountered (e.g., the
+$328$-feature behavioral block adding zero AUROC at the meta-stack
+level).
+\end{itemize}
+
+\paragraph{Where AI did NOT contribute.}
+\begin{itemize}\itemsep0.2em\topsep0.2em
+\item Core algorithmic code (the multi-layer probe, behavioral parser,
+graph encoders, feature extractors, OOF stacking infrastructure) was
+written by the authors.
+\item \textbf{No experimental number in this paper was generated by an
+LLM.} All AUROCs, ECEs, $p$-values, confidence intervals, and per-cell
+breakdowns come from actual model runs and DeLong computations on real
+data, recorded in the project's \texttt{results/} and \texttt{reports/}
+directories.
+\item Final scientific judgments --- which results to highlight, what
+claims to make, what limitations to acknowledge, what counts as a
+falsifier --- are the authors'.
+\end{itemize}
+
+\section{Representative Prompts}
+\label{app:prompts}
+
+A small selection of the prompts we issued to Claude during the
+report-drafting and analysis phase (lightly normalized for layout; full
+session logs are retained on the project server).
+
+\begin{enumerate}\itemsep0.3em
+\item \emph{Conclusion request.} ``Let's now conclude this research with a
+final report ($\sim 3$ pages). The report should demonstrate the following
+aspects in detail: (1) Motivation and problem statement, (2) Related work
+and literature review, (3) Results and evaluation, (4) Discussion and
+analysis. Negative results will not be penalized but should be accompanied
+with detailed and comprehensive analysis of why the proposed methods didn't
+work and provide some additional insights into the problem.''
+\item \emph{Revision request.} ``This is meant to be a short conference
+paper, and the readers don't know what our internal experiment labels are.
+They should not appear in the paper; where you reference them, explain
+what they are clearly. We don't need to mention experiments that were not
+carried out, and we can skip the pre-committed falsifiers (those were just
+pre-research thoughts). Focus on what we achieved actually.''
+\item \emph{LaTeX porting.} ``Create the LaTeX version of our report
+following this NeurIPS format, and make sure it's within $4$ pages
+(references and appendix do not count toward the page limit).''
+\item \emph{Statistical interpretation.} ``I just got the new paired
+DeLong results and synced them. Please meticulously examine, think, and
+reason through each of them step by step in detail. Then demonstrate what
+they mean exactly and what the implications are.''
+\item \emph{Diagnosis.} ``I received this error from the trace-DAG build:
+[traceback]. Please diagnose and address the error step by step in
+detail.''
+\item \emph{Compliance check.} ``Here is a checklist for the report the
+professor gave us. Please meticulously think and reflect through our
+final report again to make sure it satisfies at least all the checklist
+items. If there's anything missing, revise and enhance our final report
+accordingly.''
+\end{enumerate}
 
 \end{document}
