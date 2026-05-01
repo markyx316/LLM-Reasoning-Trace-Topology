@@ -201,6 +201,23 @@ def main():
         })
     results["heatmap"] = out
 
+    # Flat (dim/layer/position) -> cell projection for downstream lookup.
+    # Prior versions left this empty; kept in sync with heatmap so that
+    # every cell is addressable by a single key.
+    results["cells"] = {
+        f"dim{dim}/L{li}/{pn}": {
+            "dim": dim,
+            "layer_index": li,
+            "layer_frac": v["layer_frac"],
+            "position": pn,
+            "auroc": v["auroc"],
+            "ece": v["ece"],
+            "auprc": v["auprc"],
+            "n": v["n"],
+        }
+        for (dim, li, pn), v in pooled_cells.items()
+    }
+
     save_results(args.output, results)
 
     # Pretty: print for each (dim, position) the AUROC vs layer trace

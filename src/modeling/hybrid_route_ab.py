@@ -85,7 +85,8 @@ RECURRENCE_FEATS = [
 # These are the "handcrafted 25" columns once we strip labels/ids/recurrence.
 BASE_EXCLUDE = {
     "item_id", "dataset", "is_correct", "y_true", "group", "prob",
-    "deberta_prob", "step_prob", "shapelet_prob",
+    "deberta_prob", "deberta_cond_prob", "roberta_prob", "probe_prob",
+    "step_prob", "shapelet_prob",
     "gnn_struct_prob", "gnn_hybrid_prob",
 } | set(RECURRENCE_FEATS)
 
@@ -229,6 +230,9 @@ def build_merged_table(
     shapelet_df: Optional[pd.DataFrame],
     gnn_struct_df: Optional[pd.DataFrame],
     gnn_hybrid_df: Optional[pd.DataFrame],
+    deberta_cond_df: Optional[pd.DataFrame] = None,
+    roberta_df: Optional[pd.DataFrame] = None,
+    probe_df: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """Inner-join everything we have on (item_id, dataset).
 
@@ -266,11 +270,15 @@ def build_merged_table(
     merged = _merge(merged, struct_ph_df, "_sph")
 
     # OOF probs carry their own y_true column; we drop theirs and keep ours.
-    for oof in (deberta_df, step_df, shapelet_df, gnn_struct_df, gnn_hybrid_df):
+    for oof in (deberta_df, step_df, shapelet_df, gnn_struct_df, gnn_hybrid_df,
+                deberta_cond_df, roberta_df, probe_df):
         if oof is None:
             continue
         to_merge = oof.drop(columns=["y_true"], errors="ignore")
+        before = len(merged)
         merged = merged.merge(to_merge, on=["item_id", "dataset"], how="inner")
+        logger.info(f"  after merging {[c for c in oof.columns if c.endswith('_prob')]}: "
+                    f"{before} -> {len(merged)} rows")
 
     logger.info(f"Merged table: {len(merged)} rows, "
                 f"{len(merged.columns)} cols")
@@ -293,6 +301,10 @@ VARIANT_FLAGS_DEFAULT = dict(
     include_shapelet_oof=False,
     include_gnn_struct_oof=False, include_gnn_hybrid_oof=False,
     include_deberta_oof=False, include_step_oof=False,
+    # Phase 2 additions: extra text / probe OOFs
+    include_deberta_cond_oof=False,
+    include_roberta_oof=False,
+    include_probe_oof=False,
 )
 
 
@@ -359,21 +371,129 @@ VARIANTS: dict[str, dict] = {
                                  include_gnn_struct_oof=True,
                                  include_deberta_oof=True,
                                  include_step_oof=True),
+
+    # ==================================================================
+    # Phase 2 — ULTRA_HYBRID variants.
+    # These stack everything available: Route A CSVs, all Route B1 GNNs,
+    # shapelet, every text OOF (DeBERTa, DeBERTa+Cond, RoBERTa, Step),
+    # and the v2 hidden-state probe.  The intent is to see whether
+    # adding the four Route A feature families to the Phase-1 text+probe
+    # stack (which already hits 0.8051 AUROC as SuperHybrid_LR) moves
+    # pooled AUROC and whether that movement is statistically real per
+    # DeLong.
+    # ==================================================================
+    #  Structural-only (no text OOFs).  The strongest content-free stack
+    #  we can build; benchmarks the pure "structure-is-enough" story.
+    "ULTRA_STRUCTURAL":      _mk(include_feats=True, include_rec=True,
+                                 include_ngram=True, include_graph=True,
+                                 include_timing=True, include_struct_ph=True,
+                                 include_shapelet_oof=True,
+                                 include_gnn_struct_oof=True),
+    #  Text-only reference (every text / probe OOF, no structure).  The
+    #  "how much does each text encoder overlap" baseline.
+    "ULTRA_TEXT_ONLY":       _mk(include_deberta_oof=True,
+                                 include_deberta_cond_oof=True,
+                                 include_roberta_oof=True,
+                                 include_step_oof=True,
+                                 include_probe_oof=True),
+    #  Phase 3 (T5): ULTRA_TEXT_ONLY's five text/probe OOFs + the
+    #  Graphormer-v3 structural OOF. Tests whether a pure-structural
+    #  content-free signal adds value on top of the saturated text stack.
+    "ULTRA_TEXT_ONLY_PLUS_GRAPH": _mk(include_deberta_oof=True,
+                                      include_deberta_cond_oof=True,
+                                      include_roberta_oof=True,
+                                      include_step_oof=True,
+                                      include_probe_oof=True,
+                                      include_gnn_struct_oof=True),
+    #  Core: structural + best text (DeBERTa+Cond) + probe.  Pragmatic
+    #  candidate for the paper headline.
+    "ULTRA_HYBRID_CORE":     _mk(include_feats=True, include_rec=True,
+                                 include_ngram=True, include_graph=True,
+                                 include_timing=True, include_struct_ph=True,
+                                 include_shapelet_oof=True,
+                                 include_gnn_struct_oof=True,
+                                 include_gnn_hybrid_oof=True,
+                                 include_deberta_cond_oof=True,
+                                 include_probe_oof=True),
+    #  Everything we have.  Gives the ceiling at the cost of being an
+    #  overparameterised stack; the paper cites this as an "upper bound"
+    #  and the CORE variant as the recommended one.
+    "ULTRA_HYBRID_ALL":      _mk(include_feats=True, include_rec=True,
+                                 include_ngram=True, include_graph=True,
+                                 include_timing=True, include_struct_ph=True,
+                                 include_shapelet_oof=True,
+                                 include_gnn_struct_oof=True,
+                                 include_gnn_hybrid_oof=True,
+                                 include_deberta_oof=True,
+                                 include_deberta_cond_oof=True,
+                                 include_roberta_oof=True,
+                                 include_step_oof=True,
+                                 include_probe_oof=True),
+    #  Minus-one ablations: used for attributing which family carries
+    #  ULTRA_HYBRID_ALL's gain.
+    "ULTRA_ALL-route_a":     _mk(include_feats=True, include_rec=True,
+                                 include_shapelet_oof=True,
+                                 include_gnn_struct_oof=True,
+                                 include_gnn_hybrid_oof=True,
+                                 include_deberta_oof=True,
+                                 include_deberta_cond_oof=True,
+                                 include_roberta_oof=True,
+                                 include_step_oof=True,
+                                 include_probe_oof=True),
+    "ULTRA_ALL-gnn":         _mk(include_feats=True, include_rec=True,
+                                 include_ngram=True, include_graph=True,
+                                 include_timing=True, include_struct_ph=True,
+                                 include_shapelet_oof=True,
+                                 include_deberta_oof=True,
+                                 include_deberta_cond_oof=True,
+                                 include_roberta_oof=True,
+                                 include_step_oof=True,
+                                 include_probe_oof=True),
+    "ULTRA_ALL-text":        _mk(include_feats=True, include_rec=True,
+                                 include_ngram=True, include_graph=True,
+                                 include_timing=True, include_struct_ph=True,
+                                 include_shapelet_oof=True,
+                                 include_gnn_struct_oof=True,
+                                 include_gnn_hybrid_oof=True,
+                                 include_probe_oof=True),
+    "ULTRA_ALL-probe":       _mk(include_feats=True, include_rec=True,
+                                 include_ngram=True, include_graph=True,
+                                 include_timing=True, include_struct_ph=True,
+                                 include_shapelet_oof=True,
+                                 include_gnn_struct_oof=True,
+                                 include_gnn_hybrid_oof=True,
+                                 include_deberta_oof=True,
+                                 include_deberta_cond_oof=True,
+                                 include_roberta_oof=True,
+                                 include_step_oof=True),
+    "ULTRA_ALL-shapelet":    _mk(include_feats=True, include_rec=True,
+                                 include_ngram=True, include_graph=True,
+                                 include_timing=True, include_struct_ph=True,
+                                 include_gnn_struct_oof=True,
+                                 include_gnn_hybrid_oof=True,
+                                 include_deberta_oof=True,
+                                 include_deberta_cond_oof=True,
+                                 include_roberta_oof=True,
+                                 include_step_oof=True,
+                                 include_probe_oof=True),
 }
 
 
 def variant_needs(cfg: dict) -> dict[str, bool]:
     """Which input dataframes are needed by a variant."""
     return {
-        "ngram":      cfg["include_ngram"],
-        "graph":      cfg["include_graph"],
-        "timing":     cfg["include_timing"],
-        "struct_ph":  cfg["include_struct_ph"],
-        "shapelet":   cfg["include_shapelet_oof"],
-        "gnn_struct": cfg["include_gnn_struct_oof"],
-        "gnn_hybrid": cfg["include_gnn_hybrid_oof"],
-        "deberta":    cfg["include_deberta_oof"],
-        "step":       cfg["include_step_oof"],
+        "ngram":        cfg["include_ngram"],
+        "graph":        cfg["include_graph"],
+        "timing":       cfg["include_timing"],
+        "struct_ph":    cfg["include_struct_ph"],
+        "shapelet":     cfg["include_shapelet_oof"],
+        "gnn_struct":   cfg["include_gnn_struct_oof"],
+        "gnn_hybrid":   cfg["include_gnn_hybrid_oof"],
+        "deberta":      cfg["include_deberta_oof"],
+        "step":         cfg["include_step_oof"],
+        "deberta_cond": cfg["include_deberta_cond_oof"],
+        "roberta":      cfg["include_roberta_oof"],
+        "probe":        cfg["include_probe_oof"],
     }
 
 
@@ -415,11 +535,14 @@ def _collect_cols(
     _add_if_present(cfg["include_struct_ph"], struct_ph_df)
 
     for flag_key, col_name in [
-        ("include_shapelet_oof", "shapelet_prob"),
-        ("include_gnn_struct_oof", "gnn_struct_prob"),
-        ("include_gnn_hybrid_oof", "gnn_hybrid_prob"),
-        ("include_deberta_oof", "deberta_prob"),
-        ("include_step_oof", "step_prob"),
+        ("include_shapelet_oof",     "shapelet_prob"),
+        ("include_gnn_struct_oof",   "gnn_struct_prob"),
+        ("include_gnn_hybrid_oof",   "gnn_hybrid_prob"),
+        ("include_deberta_oof",      "deberta_prob"),
+        ("include_step_oof",         "step_prob"),
+        ("include_deberta_cond_oof", "deberta_cond_prob"),
+        ("include_roberta_oof",      "roberta_prob"),
+        ("include_probe_oof",        "probe_prob"),
     ]:
         if cfg[flag_key] and col_name in merged.columns:
             cols.append(col_name)
@@ -525,6 +648,18 @@ def main():
     p.add_argument("--gnn-hybrid-oof", default=None)
     p.add_argument("--deberta-oof", default=None)
     p.add_argument("--step-oof", default=None)
+    # Phase 2 additions
+    p.add_argument("--deberta-cond-oof", default=None,
+                   help="Path to DeBERTa-Conditioned OOF npz "
+                        "(e.g. results/month2/deberta_conditioned_pooled_oof.npz)")
+    p.add_argument("--roberta-oof", default=None,
+                   help="Path to RoBERTa OOF npz (e.g. results/roberta_pooled_oof.npz)")
+    p.add_argument("--probe-oof", default=None,
+                   help="Path to hidden-state probe v2 OOF npz "
+                        "(e.g. results/month3/hidden_probe_pooled_mlp_hidden_plus_genunc_oof.npz)")
+    p.add_argument("--oof-out-dir", default=None,
+                   help="Directory to write per-variant *_oof.npz files so the "
+                        "Phase-1 DeLong machinery can consume them.")
 
     p.add_argument("--output", required=True)
     p.add_argument("--clf", default="all", choices=["lr", "rf", "xgb", "all"])
@@ -551,10 +686,17 @@ def main():
     shapelet_df = load_oof(args.shapelet_oof, "shapelet_prob")
     gnn_s_df = load_oof(args.gnn_structural_oof, "gnn_struct_prob")
     gnn_h_df = load_oof(args.gnn_hybrid_oof, "gnn_hybrid_prob")
+    # Phase 2 additions
+    deberta_cond_df = load_oof(args.deberta_cond_oof, "deberta_cond_prob")
+    roberta_df = load_oof(args.roberta_oof, "roberta_prob")
+    probe_df = load_oof(args.probe_oof, "probe_prob")
 
     merged = build_merged_table(
         hand_df, ngram_df, graph_df, timing_df, struct_ph_df,
         deberta_df, step_df, shapelet_df, gnn_s_df, gnn_h_df,
+        deberta_cond_df=deberta_cond_df,
+        roberta_df=roberta_df,
+        probe_df=probe_df,
     )
 
     y_all = merged["y_true"].to_numpy().astype(int)
@@ -563,15 +705,18 @@ def main():
     # ----- Pick variants -----
     # Drop variants whose required inputs are absent.
     have = {
-        "ngram": ngram_df is not None,
-        "graph": graph_df is not None,
-        "timing": timing_df is not None,
-        "struct_ph": struct_ph_df is not None,
-        "shapelet": shapelet_df is not None,
-        "gnn_struct": gnn_s_df is not None,
-        "gnn_hybrid": gnn_h_df is not None,
-        "deberta": deberta_df is not None,
-        "step": step_df is not None,
+        "ngram":        ngram_df is not None,
+        "graph":        graph_df is not None,
+        "timing":       timing_df is not None,
+        "struct_ph":    struct_ph_df is not None,
+        "shapelet":     shapelet_df is not None,
+        "gnn_struct":   gnn_s_df is not None,
+        "gnn_hybrid":   gnn_h_df is not None,
+        "deberta":      deberta_df is not None,
+        "step":         step_df is not None,
+        "deberta_cond": deberta_cond_df is not None,
+        "roberta":      roberta_df is not None,
+        "probe":        probe_df is not None,
     }
     runnable = {}
     for vname, cfg in VARIANTS.items():
@@ -627,7 +772,7 @@ def main():
                     "ece": m["ece"], "accuracy": m["accuracy"],
                     "accuracy_at_80": m["accuracy_at_80"],
                     "accuracy_at_90": m["accuracy_at_90"],
-                    "prr": m["prr"],
+                    "prr": m.get("prr", float("nan")),
                     "n_samples": m["n_samples"],
                 })
             oof_store[f"{vname}__{c}"] = {
@@ -636,6 +781,27 @@ def main():
                 "group": group_all,
                 "y_true": y_all,
             }
+            # Phase 2: write per-variant OOF npz (project-standard contract:
+            # {item_ids, groups, y_true, oof_prob, oof_fold, seed, n_splits}).
+            # Downstream DeLong machinery intersects via (group, item_id).
+            if args.oof_out_dir is not None:
+                os.makedirs(args.oof_out_dir, exist_ok=True)
+                safe_vname = vname.replace("+", "_plus_").replace("-", "_minus_")
+                npz_path = os.path.join(
+                    args.oof_out_dir,
+                    f"ultrahybrid_{safe_vname}__{c}_oof.npz",
+                )
+                np.savez_compressed(
+                    npz_path,
+                    item_ids=merged["item_id"].to_numpy().astype(str),
+                    groups=group_all.astype(str),
+                    y_true=y_all.astype(int),
+                    oof_prob=np.asarray(res["oof_prob"]).astype(float),
+                    oof_fold=np.asarray(res["oof_fold"]).astype(int),
+                    seed=np.asarray([args.seed]),
+                    n_splits=np.asarray([args.n_splits]),
+                )
+                logger.info(f"    wrote OOF npz: {npz_path}")
             # Drop the verbose oof arrays from the JSON to keep it lean.
             res.pop("oof_prob", None); res.pop("oof_fold", None)
         all_results["variants"][vname] = vblock
