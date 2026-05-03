@@ -5,7 +5,6 @@
 % natbib is loaded by neurips_2025; we want numerical citation style.
 \PassOptionsToPackage{numbers,sort&compress}{natbib}
 \usepackage[preprint]{neurips_2025}
-
 \usepackage[font=small,labelfont=bf,skip=4pt]{caption}
 \setlength{\textfloatsep}{6pt plus 2pt minus 2pt}
 \setlength{\intextsep}{6pt plus 2pt minus 2pt}
@@ -20,6 +19,7 @@
 \usepackage{xcolor}
 \usepackage{hyperref}
 \usepackage{url}
+\usepackage{pdfpages}
 
 \title{SuperHybrid: Single-Pass Black-Box Uncertainty\\
        Quantification for LLM Reasoning Traces}
@@ -458,6 +458,10 @@ T.~Akiba, S.~Sano, T.~Yanase, T.~Ohta, and M.~Koyama.
 
 \appendix
 
+\section{Code Repo}
+
+The code for SuperHybrid is available at \url{https://github.com/markyx316/LLM-Reasoning-Trace-Topology}
+
 \section{Computing Infrastructure and Hyperparameters}
 \label{app:hyper}
 
@@ -569,12 +573,41 @@ A small selection of the prompts we issued to Claude during our research process
 DeLong results and synced them. Please meticulously examine, think, and
 reason through each of them step by step in detail. Then demonstrate what
 they mean exactly and what the implications are.''
+
 \item \emph{Diagnosis.} ``I received this error from the trace-DAG build:
 [traceback]. Please diagnose and address the error step by step in
 detail.''
+
 \item \emph{LaTeX porting.} ``Create the LaTeX version of our report
 following this NeurIPS format, and make sure it's compliant with all the requirements.''
 
+\item \emph{Model selection.} ``We keep getting the same DeBERTa
+results. We need a genuinely new method. Search for alternatives and
+recommend the best option for improving AUROC on long reasoning traces.''
+
+\item \emph{Performance diagnosis.} ``Check why training is so slow---each
+epoch takes 24 minutes. Identify the bottleneck and fix it.''
+
+\item \emph{Feature engineering.} ``Implement focal loss, label
+smoothing, and early stopping in the Longformer fine-tuning loop. Add
+\texttt{--focal-gamma}, \texttt{--label-smoothing}, and
+\texttt{--patience} arguments so we can sweep them from the SLURM
+script.''
+
+\item \emph{Infrastructure.} ``The step-embedding builder gets killed on
+the login node. Write an \texttt{sbatch} script that runs it on a GPU
+node with appropriate memory and time limits.''
+
+\item \emph{Result interpretation.} ``The ensemble only gains $+0.001$
+AUROC over the Longformer alone. What does this tell us about the
+marginal value of step embeddings, and what should we try next?''
+
+\item \emph{Compatibility.} ``We got \texttt{CUDA error: no kernel image
+is available for execution on the device} on the B200 partition.
+Diagnose and fix the PyTorch--CUDA architecture mismatch.''
+
 \end{enumerate}
+
+\includepdf[pages=-]{Reproducibility_checklist.pdf}
 
 \end{document}
